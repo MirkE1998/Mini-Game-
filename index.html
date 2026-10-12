@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Handy weg! Chefin kommt</title>
+<style>
+  html,body{margin:0;height:100%;background:#1b1b24;color:#fff;font-family:system-ui,sans-serif;touch-action:none;user-select:none;-webkit-user-select:none}
+  body{display:flex;flex-direction:column;align-items:center;justify-content:center}
+  canvas{width:min(100vw,calc(100vh*1.2));height:auto;aspect-ratio:480/400;background:#000;border-radius:8px}
+  p{margin:8px 12px;font-size:14px;opacity:.8;text-align:center}
+</style>
+</head>
+<body>
+<canvas id="c" width="480" height="400"></canvas>
+<p>LEERTASTE / Maus / Finger <b>gedrückt halten</b> = am Handy spielen. <b>Loslassen</b> = Handy wegmachen!</p>
+<script>
+const cv = document.getElementById('c'), g = cv.getContext('2d');
+let state = 'start';          // start | play | over
+let held = false;             // Handy wird benutzt
+let phone = 0;                // 0 = weg, 1 = oben (animiert)
+let score = 0, best = 0, t = 0;
+let boss;                     // {phase, x, timer, react}
+
+function resetGame() {
+  score = 0; t = 0; phone = 0;
+  boss = { phase: 'away', x: 0, timer: 2.5, react: 1 };
+  state = 'play';
+}
+
+function down() {
+  if (state === 'play') held = true;
+  else if (state === 'start' || state === 'over') { held = false; resetGame(); }
+}
+function up() { held = false; }
+addEventListener('keydown', e => { if (e.code === 'Space') { e.preventDefault(); if (!e.repeat) down(); } });
+addEventListener('keyup', e => { if (e.code === 'Space') up(); });
+addEventListener('pointerdown', down);
+addEventListener('pointerup', up);
+addEventListener('pointercancel', up);
+
+function update(dt) {
+  t += dt;
+  phone += ((held ? 1 : 0) - phone) * Math.min(1, dt * 18);
+  if (state !== 'play') return;
+  if (held) score += dt;
+
+  // Schwierigkeit steigt mit der Zeit
+  const level = Math.min(1, score / 60);
+  const reactTime = 1.0 - 0.6 * level;     // Zeit zum Wegmachen: 1.0s -> 0.4s
+
+  const b = boss;
+  b.timer -= dt;
+  if (b.phase === 'away') {
+    b.x = 0;
+    if (b.timer <= 0) { b.phase = 'peek'; b.timer = reactTime; b.react = reactTime; }
+  } else if (b.phase === 'peek') {
+    b.x = 1 - Math.max(0, b.timer) / b.react;   // schiebt sich um die Ecke
+    if (b.timer <= 0) {
+      if (phone > 0.35 && held) return lose();
+      b.phase = 'look'; b.timer = 0.9 + Math.random() * 0.8;
+    }
+  } else if (b.phase === 'look') {
+    b.x = 1;
+    if (held || phone > 0.35) return lose();
+    if (b.timer <= 0) { b.phase = 'leave'; b.timer = 0.4; }
+  } else if (b.phase === 'leave') {
+    b.x = Math.max(0, b.timer / 0.4);
+    if (b.timer <= 0) { b.phase = 'away'; b.timer = 1.5 + Math.random() * (3.5 - 2 * level); }
+  }
+}
+function lose() { state = 'over'; held = false; best = Math.max(best, score); }
+
+/* ---------- Zeichnen ---------- */
+function rect(x, y, w, h, c) { g.fillStyle = c; g.fillRect(x, y, w, h); }
+function circ(x, y, r, c) { g.fillStyle = c; g.beginPath(); g.arc(x, y, r, 0, 7); g.fill(); }
+
+function drawBoss(x) {
+  // Position: schiebt sich von rechts hinter der Türkante hervor
+  const ox = 480 - 120 * x + 0;
+  g.save();
+  g.beginPath(); g.rect(330, 40, 150, 300); g.clip();   // nur der Türausschnitt sichtbar
+  rect(330, 40, 150, 300, '#2a2a38');                   // dunkler Flur
+  g.translate(ox - 395, 0);
+  const wide = boss.phase === 'look' ? 1 : 0;
+  // Körper (Blazer)
+  rect(386, 250, 52, 90, '#7a2e5a');
+  rect(398, 250, 28, 40, '#f3e9e0');
+  // Hals + Kopf
+  rect(406, 232, 12, 20, '#f2c9a5');
+  circ(412, 205, 27, '#f2c9a5');
+  // Zopf (braun) hinten dran
+  g.fillStyle = '#6b3f1e';
+  g.beginPath(); g.ellipse(440, 235, 9, 30, -0.25, 0, 7); g.fill();
+  rect(434, 196, 10, 8, '#d33');                        // Haargummi
+  // Haare oben
+  g.beginPath(); g.arc(412, 200, 28, Math.PI, 0); g.fill();
+  rect(384, 198, 56, 6, '#6b3f1e');
+  // Augen: schauen böse zum Spieler (links)
+  circ(402, 208, 5, '#fff'); circ(420, 208, 5, '#fff');
+  circ(400 - wide, 209, 2.5, '#222'); circ(418 - wide, 209, 2.5, '#222');
+  // Augenbrauen
+  g.strokeStyle = '#3a2210'; g.lineWidth = 3;
+  g.beginPath(); g.moveTo(396, 198 + wide * 0); g.lineTo(407, 202); g.moveTo(426, 198); g.lineTo(415, 202); g.stroke();
+  // Mund
+  g.strokeStyle = '#a22'; g.lineWidth = 2;
+  g.beginPath(); g.moveTo(404, 224); g.lineTo(420, 224); g.stroke();
+  g.restore();
+}
+
+function draw() {
+  // Büro
+  rect(0, 0, 480, 400, '#d9d4c7');
+  rect(0, 340, 480, 60, '#8a6a4b');                      // Boden
+  rect(0, 0, 480, 40, '#cfc9ba');
+  // Tür / Flur rechts
+  rect(325, 35, 160, 310, '#4a3a2a');
+  drawBoss(boss ? boss.x : 0);
+  // Türrahmen-Kante
+  rect(325, 35, 8, 310, '#3a2d20');
+
+  // Warnung
+  if (state === 'play' && boss.phase === 'peek') {
+    g.fillStyle = '#e22'; g.font = 'bold 44px system-ui'; g.textAlign = 'center';
+    g.fillText('!', 305, 80);
+  }
+
+  // Schreibtisch + PC
+  rect(40, 270, 260, 14, '#6b4a2b');
+  rect(60, 284, 10, 60, '#5a3d22'); rect(270, 284, 10, 60, '#5a3d22');
+  rect(120, 190, 110, 70, '#222'); rect(126, 196, 98, 56, '#3d7bd8');   // Monitor
+  rect(170, 260, 10, 10, '#222');
+  rect(50, 262, 6, 8, '#aaa');
+  // Bildschirm: sieht arbeitsmäßig aus
+  rect(132, 204, 60, 5, '#fff'); rect(132, 214, 80, 5, '#cfe'); rect(132, 224, 50, 5, '#cfe'); rect(132, 234, 70, 5, '#cfe');
+
+  // Stuhl
+  rect(70, 300, 70, 10, '#333'); rect(100, 310, 8, 30, '#333');
+  // Fitness-Trainer (sitzt, schaut nach rechts)
+  rect(78, 255, 40, 48, '#e8512b');                      // Tanktop
+  rect(84, 300, 70, 16, '#2b3a55');                      // Oberschenkel
+  rect(146, 300, 14, 40, '#2b3a55');                     // Unterschenkel
+  rect(142, 338, 26, 8, '#fff');                         // Schuh
+  circ(100, 232, 20, '#e8b48a');                         // Kopf
+  rect(80, 214, 40, 8, '#c11');                          // Stirnband
+  g.fillStyle = '#3a2210'; g.beginPath(); g.arc(100, 228, 20, Math.PI, 0); g.fill();
+  rect(80, 222, 40, 5, '#c11');
+  circ(110, 234, 2.5, '#222');                           // Auge
+  // Arm mit großem Bizeps
+  const ax = 108 + phone * 0, ay = 268 - phone * 14;
+  g.fillStyle = '#e8b48a';
+  g.beginPath(); g.ellipse(112, 275, 14, 11, 0, 0, 7); g.fill();
+  rect(112, 270 - phone * 14, 24 + phone * 10, 12, '#e8b48a');
+
+  // Handy: oben (benutzt) oder unter dem Tisch (weg)
+  const py = 300 - phone * 40;
+  const px = 150 + phone * 8;
+  g.save();
+  g.globalAlpha = 0.25 + 0.75 * phone;
+  rect(px, py - phone * 6, 22, 38, '#111');
+  rect(px + 2, py + 2 - phone * 6, 18, 30, '#7fe3ff');
+  circ(px + 11, py + 20 - phone * 6, 3, '#fff');
+  g.restore();
+  circ(px + 20, py + 8 - phone * 6 + 6, 6, '#e8b48a');  // Hand
+
+  // HUD
+  g.fillStyle = '#222'; g.textAlign = 'left'; g.font = 'bold 18px system-ui';
+  g.fillText('Zeit am Handy: ' + score.toFixed(1) + 's', 12, 26);
+  g.textAlign = 'right'; g.fillText('Rekord: ' + best.toFixed(1) + 's', 468, 26);
+
+  if (state !== 'play') {
+    g.fillStyle = 'rgba(0,0,0,.6)'; g.fillRect(0, 0, 480, 400);
+    g.fillStyle = '#fff'; g.textAlign = 'center';
+    if (state === 'start') {
+      g.font = 'bold 30px system-ui'; g.fillText('Handy weg! Chefin kommt', 240, 150);
+      g.font = '17px system-ui';
+      g.fillText('Halte LEERTASTE / Finger gedrückt: du zockst am Handy.', 240, 195);
+      g.fillText('Siehst du das rote "!", sofort LOSLASSEN!', 240, 220);
+      g.fillText('Erwischt sie dich mit Handy = verloren.', 240, 245);
+      g.font = 'bold 20px system-ui'; g.fillText('Tippen zum Starten', 240, 300);
+    } else {
+      g.font = 'bold 36px system-ui'; g.fillStyle = '#ff6b6b'; g.fillText('ERWISCHT!', 240, 150);
+      g.fillStyle = '#fff'; g.font = '20px system-ui';
+      g.fillText('"Ab zum Training – du bist gefeuert!"', 240, 190);
+      g.fillText('Zeit am Handy: ' + score.toFixed(1) + 's', 240, 225);
+      g.font = 'bold 20px system-ui'; g.fillText('Tippen für neuen Versuch', 240, 300);
+    }
+  }
+}
+
+let last = performance.now();
+function loop(now) {
+  const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  if (!boss) boss = { phase: 'away', x: 0, timer: 1, react: 1 };
+  update(dt); draw();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

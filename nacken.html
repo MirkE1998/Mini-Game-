@@ -6,198 +6,262 @@
 <title>Nacken Training</title>
 <style>
   :root{color-scheme:dark}
-  html,body{margin:0;height:100%;background:#1b1b24;color:#fff;font-family:system-ui,sans-serif;touch-action:none;user-select:none;-webkit-user-select:none}
+  html,body{margin:0;height:100%;background:#05070f;color:#cfefff;font-family:system-ui,sans-serif;touch-action:none;user-select:none;-webkit-user-select:none}
   body{display:flex;flex-direction:column;align-items:center;justify-content:center}
-  canvas{width:min(100vw,calc(100vh*1.2));height:auto;aspect-ratio:480/400;background:#000;border-radius:8px}
-  p{margin:8px 12px;font-size:14px;opacity:.8;text-align:center}
+  canvas{width:min(100vw,calc(100vh*1.2));height:auto;aspect-ratio:480/400;background:#000;border-radius:8px;box-shadow:0 0 30px rgba(61,232,255,.25)}
+  p{margin:8px 12px;font-size:14px;opacity:.75;text-align:center}
 </style>
 </head>
 <body>
 <canvas id="c" width="480" height="400"></canvas>
-<p>Klicken / tippen / LEERTASTE = Nacken ziehen. Füll den Balken, bis es passiert!</p>
+<p>Klicken / tippen / LEERTASTE = Kurzhanteln hochziehen (Nacken-Shrugs). Balken füllen, bis es passiert!</p>
 <script>
 const cv = document.getElementById('c'), g = cv.getContext('2d');
-const SKIN = '#e0a98a', SKIN_D = '#c98c6c', SKIN_L = '#eebb9d';
+const CYAN = '#3de8ff', MAG = '#ff3df2';
 let state = 'start';          // start | play | boom | won
 let progress = 0, clicks = 0, best = 0;
-let pulse = 0;                // Ruck beim Klick
-let boomT = 0, t = 0;
+let pulse = 0, boomT = 0, t = 0;
 let sweat = [];
 const CLICKS_NEEDED = 28;
 
 function reset() { progress = 0; clicks = 0; pulse = 0; boomT = 0; sweat = []; state = 'play'; }
 function pull() {
-  if (state === 'start' || state === 'won') { if (state === 'won' || state === 'start') return reset(); }
+  if (state === 'start' || state === 'won') return reset();
   if (state !== 'play') return;
   clicks++; pulse = 1;
   progress = Math.min(1, clicks / CLICKS_NEEDED);
-  sweat.push({ x: 215 + Math.random() * 50, y: 150, vy: 0, vx: (Math.random() - .5) * 60, life: 1 });
+  sweat.push({ x: -22 + Math.random() * 44, y: 128 + Math.random() * 20, vy: 0, vx: (Math.random() - .5) * 40, life: 1 });
   if (clicks >= CLICKS_NEEDED) { state = 'boom'; boomT = 0; }
 }
 addEventListener('keydown', e => { if (e.code === 'Space') { e.preventDefault(); if (!e.repeat) pull(); } });
 addEventListener('pointerdown', pull);
 
-const ease = x => { const c = 1.9; return 1 + (c + 1) * Math.pow(x - 1, 3) + c * Math.pow(x - 1, 2); };
+const ease = x => { const c = 1.2; return 1 + (c + 1) * Math.pow(x - 1, 3) + c * Math.pow(x - 1, 2); };
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
 function update(dt) {
   t += dt;
-  pulse = Math.max(0, pulse - dt * 5);
-  for (const s of sweat) { s.vy += 400 * dt; s.y += s.vy * dt; s.x += s.vx * dt; s.life -= dt * 1.2; }
+  pulse = Math.max(0, pulse - dt * 4.5);
+  for (const s of sweat) { s.vy += 260 * dt; s.y += s.vy * dt; s.x += s.vx * dt; s.life -= dt * 1.1; }
   sweat = sweat.filter(s => s.life > 0);
   if (state === 'boom') {
     boomT += dt;
-    if (boomT > 1.2) { state = 'won'; best = best ? Math.min(best, clicks) : clicks; }
+    if (boomT > 1.4) { state = 'won'; best = best ? Math.min(best, clicks) : clicks; }
   }
 }
-
 function neckWidth() {
-  if (state === 'boom' || state === 'won') {
-    const k = state === 'won' ? 1 : Math.min(1, boomT / 0.55);
-    return 22 + 190 * ease(k);
-  }
-  return 16 + progress * 6;   // bleibt auffällig dünn
+  if (state === 'boom' || state === 'won') return 18 + 33 * ease(state === 'won' ? 1 : Math.min(1, boomT / 0.7));
+  return 18 + progress * 3;                               // bleibt sehr dünn
 }
 
-/* ---------- Zeichnen ---------- */
-function rect(x, y, w, h, c) { g.fillStyle = c; g.fillRect(x, y, w, h); }
+/* ---------- Helfer ---------- */
 function circ(x, y, r, c) { g.fillStyle = c; g.beginPath(); g.arc(x, y, r, 0, 7); g.fill(); }
 function ell(x, y, rx, ry, c, rot) { g.fillStyle = c; g.beginPath(); g.ellipse(x, y, rx, ry, rot || 0, 0, 7); g.fill(); }
 function rr(x, y, w, h, r, c) { g.fillStyle = c; g.beginPath(); g.roundRect(x, y, w, h, r); g.fill(); }
+function lin(x0, y0, x1, y1, stops) { const l = g.createLinearGradient(x0, y0, x1, y1); stops.forEach(([o, c]) => l.addColorStop(o, c)); return l; }
+function rad(x, y, r0, r1, stops) { const l = g.createRadialGradient(x, y, r0, x, y, r1); stops.forEach(([o, c]) => l.addColorStop(o, c)); return l; }
+function glow(c, b) { g.shadowColor = c; g.shadowBlur = b; }
+function noGlow() { g.shadowBlur = 0; g.shadowColor = 'transparent'; }
+function skin(x0, y0, x1, y1) { return lin(x0, y0, x1, y1, [[0, '#e8b592'], [0.55, '#cf9672'], [1, '#a06848']]); }
 
-function drawGym() {
-  rect(0, 0, 480, 400, '#d9d4c7');
-  rect(0, 0, 480, 34, '#cbc5b5');
-  rect(0, 340, 480, 60, '#3a3a45'); rect(0, 340, 480, 4, '#2b2b33');   // Gummiboden
-  rect(0, 334, 480, 6, '#b9b2a0');
-  // Poster
-  rr(24, 70, 64, 90, 3, '#2b3a55'); rect(30, 76, 52, 78, '#e8512b');
-  g.fillStyle = '#fff'; g.font = 'bold 14px system-ui'; g.textAlign = 'center';
-  g.fillText('NO PAIN', 56, 106); g.fillText('NO GAIN', 56, 124);
-  // Hantelständer rechts
-  rect(390, 250, 8, 90, '#2b2b33'); rect(450, 250, 8, 90, '#2b2b33'); rect(390, 250, 68, 6, '#2b2b33');
-  rect(390, 290, 68, 5, '#2b2b33');
-  for (const [x, y] of [[400, 238], [420, 238], [440, 238], [408, 278], [432, 278]]) { circ(x, y + 8, 9, '#444'); circ(x, y + 8, 3, '#999'); }
-  // Spiegel
-  rr(300, 60, 70, 150, 4, '#a9c4d6'); rect(306, 66, 58, 138, '#cfe3ef');
-  g.strokeStyle = 'rgba(255,255,255,.7)'; g.lineWidth = 4;
-  g.beginPath(); g.moveTo(318, 190); g.lineTo(350, 80); g.stroke();
+/* ---------- Hintergrund: futuristisches Fitness-Lab ---------- */
+const city = [];
+(function () { let s = 7; const r = () => (s = (s * 9301 + 49297) % 233280) / 233280;
+  for (let x = -10, i = 0; x < 490; i++) { const w = 22 + r() * 30, h = 50 + r() * 120; city.push({ x, w, h, far: i % 2, win: Array.from({ length: 14 }, () => [r(), r(), r() < .5]) }); x += w + 2; } })();
+
+function drawBG() {
+  g.fillStyle = lin(0, 0, 0, 300, [[0, '#050814'], [0.6, '#101a3d'], [1, '#2a1650']]); g.fillRect(0, 0, 480, 400);
+  // Skyline durchs Panoramafenster
+  for (const layer of [1, 0]) for (const b of city) if (b.far === layer) {
+    const y = 262 - b.h * (layer ? 0.7 : 1);
+    g.fillStyle = layer ? '#0e1636' : '#0a0f26'; g.fillRect(b.x, y, b.w, 262 - y);
+    for (const [wx, wy, on] of b.win) if (on) { g.fillStyle = (wx > .5 ? 'rgba(61,232,255,.55)' : 'rgba(255,61,242,.45)'); g.fillRect(b.x + 3 + wx * (b.w - 8), y + 6 + wy * (262 - y - 14), 2, 3); }
+  }
+  // Fensterstreben
+  g.fillStyle = 'rgba(10,16,36,.9)'; for (const x of [78, 158, 322, 402]) g.fillRect(x, 34, 5, 240);
+  g.fillStyle = 'rgba(61,232,255,.35)'; for (const x of [78, 158, 322, 402]) g.fillRect(x + 1, 34, 1, 240);
+  // Holo-Ring hinter dem Mann
+  g.save(); g.translate(240, 190); g.lineWidth = 2; glow(CYAN, 12);
+  g.strokeStyle = 'rgba(61,232,255,.55)'; g.setLineDash([14, 10]); g.lineDashOffset = -t * 24;
+  g.beginPath(); g.arc(0, 0, 138, 0, 7); g.stroke();
+  g.strokeStyle = 'rgba(255,61,242,.45)'; g.setLineDash([4, 12]); g.lineDashOffset = t * 30;
+  g.beginPath(); g.arc(0, 0, 118, 0, 7); g.stroke();
+  g.setLineDash([]); noGlow(); g.restore();
+  // Decke / Boden
+  g.fillStyle = '#05070f'; g.fillRect(0, 0, 480, 34);
+  g.fillStyle = lin(0, 0, 480, 0, [[0, 'rgba(61,232,255,0)'], [0.5, 'rgba(61,232,255,.9)'], [1, 'rgba(255,61,242,0)']]); g.fillRect(0, 33, 480, 2);
+  g.fillStyle = lin(0, 296, 0, 400, [[0, '#0a1024'], [1, '#03050c']]); g.fillRect(0, 296, 480, 104);
+  g.strokeStyle = 'rgba(61,232,255,.28)'; g.lineWidth = 1; g.beginPath();
+  for (let i = -9; i <= 9; i++) { g.moveTo(240 + i * 14, 296); g.lineTo(240 + i * 70, 400); }
+  for (let k = 1; k <= 6; k++) { const y = 296 + k * k * 2.9; g.moveTo(0, y); g.lineTo(480, y); }
+  g.stroke();
+  g.fillStyle = lin(0, 294, 0, 300, [[0, 'rgba(61,232,255,.8)'], [1, 'rgba(61,232,255,0)']]); g.fillRect(0, 294, 480, 6);
+  // Seitliche Holo-Panels
+  g.fillStyle = 'rgba(8,22,44,.72)'; g.strokeStyle = 'rgba(61,232,255,.6)'; g.lineWidth = 1;
+  for (const x of [14, 374]) { g.beginPath(); g.roundRect(x, 70, 92, 118, 6); g.fill(); g.stroke(); }
+  g.font = 'bold 9px ui-monospace,Menlo,monospace'; g.textAlign = 'left'; g.fillStyle = CYAN;
+  g.fillText('PULS', 22, 86); g.fillText('NACKEN-SCAN', 382, 86);
+  g.fillStyle = '#fff'; g.font = 'bold 20px ui-monospace,Menlo,monospace'; g.fillText(String(Math.round(68 + progress * 90 + pulse * 6)), 22, 112);
+  g.font = '9px ui-monospace,Menlo,monospace'; g.fillStyle = MAG; g.fillText('BPM', 62, 112);
+  g.strokeStyle = MAG; g.lineWidth = 1.5; g.beginPath();
+  for (let i = 0; i <= 76; i++) { const ph = (i / 19 + t * (0.6 + progress * 1.4)) % 1; const v = ph < 0.08 ? -26 * Math.sin(ph / 0.08 * Math.PI) : ph < 0.14 ? 8 * Math.sin((ph - .08) / .06 * Math.PI) : 0; i ? g.lineTo(22 + i, 158 - v) : g.moveTo(22, 158 - v); }
+  g.stroke();
+  for (let i = 0; i < 4; i++) { const w = 20 + (progress * 52) * (0.4 + 0.6 * Math.abs(Math.sin(t * 1.3 + i))); g.fillStyle = 'rgba(61,232,255,.2)'; g.fillRect(382, 100 + i * 20, 76, 8); g.fillStyle = i === 3 ? MAG : CYAN; g.fillRect(382, 100 + i * 20, Math.min(76, w), 8); }
 }
 
-function drawCurlyHair(cx, cy, front) {
-  const pts = [];
-  for (let a = Math.PI * 1.02; a <= Math.PI * 1.98; a += 0.2) pts.push([cx + Math.cos(a) * 38, cy + Math.sin(a) * 40, 13]);
-  pts.push([cx - 40, cy - 6, 12], [cx + 40, cy - 6, 12], [cx - 36, cy + 8, 9], [cx + 36, cy + 8, 9]);
-  if (!front) for (const [x, y, r] of pts) circ(x, y, r, '#0c0c0f');
-  else {
-    // lockiger Pony
-    for (const [x, y, r] of [[cx - 22, cy - 30, 10], [cx - 8, cy - 36, 11], [cx + 8, cy - 36, 11], [cx + 22, cy - 30, 10], [cx - 32, cy - 20, 8], [cx + 32, cy - 20, 8]]) circ(x, y, r, '#0c0c0f');
-    g.strokeStyle = '#34343c'; g.lineWidth = 2;
-    for (const [x, y] of [[cx - 12, cy - 38], [cx + 10, cy - 40], [cx - 28, cy - 28], [cx + 26, cy - 30]]) { g.beginPath(); g.arc(x, y, 5, 0.5, 4.2); g.stroke(); }
-  }
+/* ---------- Figur ---------- */
+function curls(cx, cy, front) {
+  const set = [];
+  for (let a = Math.PI * 0.95; a <= Math.PI * 2.05; a += 0.22) set.push([cx + Math.cos(a) * 34, cy + Math.sin(a) * 36, 11 + (Math.sin(a * 7) + 1) * 1.8]);
+  set.push([cx - 35, cy - 4, 10], [cx + 35, cy - 4, 10], [cx - 32, cy + 8, 7], [cx + 32, cy + 8, 7]);
+  if (!front) { for (const [x, y, r] of set) { g.fillStyle = rad(x - 2, y - 3, 1, r, [[0, '#2c2c36'], [1, '#050507']]); g.beginPath(); g.arc(x, y, r, 0, 7); g.fill(); } return; }
+  for (const [x, y, r] of [[cx - 20, cy - 31, 9], [cx - 7, cy - 36, 10], [cx + 7, cy - 36, 10], [cx + 20, cy - 31, 9], [cx - 29, cy - 21, 8], [cx + 29, cy - 21, 8], [cx - 12, cy - 27, 6], [cx + 13, cy - 27, 6]]) {
+    g.fillStyle = rad(x - 2, y - 3, 1, r, [[0, '#33333f'], [1, '#050507']]); g.beginPath(); g.arc(x, y, r, 0, 7); g.fill(); }
+  g.strokeStyle = 'rgba(160,170,200,.35)'; g.lineWidth = 1.2;
+  for (const [x, y] of [[cx - 12, cy - 38], [cx + 10, cy - 40], [cx - 28, cy - 28], [cx + 26, cy - 30], [cx, cy - 33]]) { g.beginPath(); g.arc(x, y, 4.5, 0.6, 4); g.stroke(); }
+}
+
+function hex(x, y, r, c1, c2, rim) {
+  g.beginPath(); for (let i = 0; i < 6; i++) { const a = Math.PI / 6 + i * Math.PI / 3; g.lineTo(x + Math.cos(a) * r, y + Math.sin(a) * r); } g.closePath();
+  g.fillStyle = lin(x - r, y - r, x + r, y + r, [[0, c1], [1, c2]]); g.fill();
+  if (rim) { g.strokeStyle = rim; g.lineWidth = 1.5; g.stroke(); }
+}
+function dumbbell(x, y) {
+  hex(x, y + 3, 17, '#6c7488', '#252a38', 'rgba(61,232,255,.8)');
+  hex(x, y + 3, 10, '#3a4156', '#161a26');
+  g.fillStyle = CYAN; g.font = 'bold 8px ui-monospace,monospace'; g.textAlign = 'center'; g.fillText('20', x, y + 6);
 }
 
 function drawMan() {
-  const nw = neckWidth();
+  const nw = neckWidth(), f = clamp((nw - 22) / 26, 0, 1);
   const boom = state === 'boom' || state === 'won';
-  const shake = boom && state === 'boom' ? Math.sin(t * 90) * (1 - Math.min(1, boomT / 0.9)) * 4 : 0;
-  const bob = pulse * 6;
-  g.save(); g.translate(240 + shake, 0);
+  const sh = boom && state === 'boom' ? Math.sin(t * 80) * (1 - Math.min(1, boomT / 1.0)) * 3 : 0;
+  const lift = pulse * 10, breath = Math.sin(t * 2) * 0.8;
+  const sw = 60 + f * 20;                                // halbe Schulterbreite
+  const aw = 17 + f * 5;                                 // Armdicke
+  g.save(); g.translate(240 + sh, 0);
 
-  // Torso (Tanktop)
-  const sw = boom ? 90 + (nw - 22) * 0.55 : 62;          // halbe Schulterbreite
-  g.fillStyle = '#e8512b'; g.beginPath();
-  g.moveTo(-sw, 262); g.bezierCurveTo(-sw, 252, -30, 250, 0, 250);
-  g.bezierCurveTo(30, 250, sw, 252, sw, 262);
-  g.lineTo(sw - 12, 345); g.lineTo(-sw + 12, 345); g.closePath(); g.fill();
-  g.fillStyle = 'rgba(0,0,0,.15)'; g.fillRect(-4, 262, 8, 83);
-  // Arme
-  const armW = boom ? 18 : 13;
-  rr(-sw - armW + 4, 258, armW, 78, armW / 2, SKIN); rr(sw - 4, 258, armW, 78, armW / 2, SKIN);
-  // Nacken
-  const top = 205 + bob * 0.3, bot = 262;
-  const f = Math.max(0, Math.min(1, (nw - 24) / 150));     // 0 = dünn, 1 = riesig
-  const tw = nw * (1 - 0.5 * f) / 2;                       // oben schmaler, unten breiter
-  const ex = nw / 2 + 5 + f * (sw - 15 - nw / 2);
-  g.fillStyle = SKIN_D; g.beginPath();
-  g.moveTo(-tw, top); g.lineTo(tw, top);
-  g.bezierCurveTo(tw + f * 50, 232, nw / 2 + 2 + f * 60, 252, ex, bot + 4);
-  g.lineTo(-ex, bot + 4);
-  g.bezierCurveTo(-nw / 2 - 2 - f * 60, 252, -tw - f * 50, 232, -tw, top); g.fill();
-  // Nacken-Highlights
-  g.fillStyle = SKIN; g.beginPath(); g.ellipse(0, 232, nw * 0.28, 22, 0, 0, 7); g.fill();
-  if (boom) {                                             // Muskelstränge
-    g.strokeStyle = SKIN_D; g.lineWidth = 3;
-    for (const k of [-0.34, 0.34]) { g.beginPath(); g.moveTo(nw * k, 214); g.quadraticCurveTo(nw * k * 1.5, 236, nw * k * 2.1, 258); g.stroke(); }
-    g.strokeStyle = 'rgba(255,255,255,.25)'; g.lineWidth = 4;
-    g.beginPath(); g.moveTo(-nw * 0.18, 218); g.quadraticCurveTo(-nw * 0.24, 236, -nw * 0.36, 252); g.stroke();
+  // Beine (angeschnitten)
+  for (const s of [-1, 1]) { g.fillStyle = lin(s * 10, 0, s * 40, 0, [[0, '#10131c'], [1, '#05060a']]); g.beginPath(); g.roundRect(s > 0 ? 4 : -44, 346, 40, 40, 6); g.fill(); }
+  g.fillStyle = CYAN; g.fillRect(-44, 346, 2, 40); g.fillRect(42, 346, 2, 40);
+
+  g.save(); g.translate(0, -lift + breath);
+  // Arme + Kurzhanteln
+  for (const s of [-1, 1]) {
+    const ax = s * (sw + 2), ay = 262;
+    g.strokeStyle = lin(ax - 14, 0, ax + 14, 0, [[0, s < 0 ? '#e0a784' : '#b27b58'], [1, s < 0 ? '#b27b58' : '#e0a784']]);
+    g.lineWidth = aw; g.lineCap = 'round';
+    g.beginPath(); g.moveTo(ax, ay); g.quadraticCurveTo(ax + s * 7, 300, ax + s * 3, 326); g.stroke();
+    g.strokeStyle = 'rgba(0,0,0,.18)'; g.lineWidth = 2; g.beginPath(); g.moveTo(ax + s * 2, 276); g.quadraticCurveTo(ax + s * 9, 298, ax + s * 4, 318); g.stroke();
+    ell(ax, ay + 2, aw * 0.78, aw * 0.9, skin(ax - 12, ay - 12, ax + 12, ay + 14));    // Schulterkappe
+    dumbbell(ax + s * 3, 335);
+    ell(ax + s * 3, 328, 10, 8, skin(ax - 8, 320, ax + 8, 336));                       // Faust
+    g.strokeStyle = 'rgba(0,0,0,.3)'; g.lineWidth = 1; for (let i = -1; i <= 1; i++) { g.beginPath(); g.moveTo(ax + s * 3 + i * 3.4, 325); g.lineTo(ax + s * 3 + i * 3.4, 333); g.stroke(); }
   }
-  // Haare hinten
-  drawCurlyHair(0, 170 + bob, false);
+  // Nacken + Trapezius (Haut)
+  g.fillStyle = skin(-sw, 190, sw, 270); g.beginPath();
+  g.moveTo(-nw / 2, 170);
+  g.bezierCurveTo(-nw / 2 - 1, 214, -nw / 2 - 6 - f * 8, 228 - f * 6, -nw / 2 - 14 - f * 24, 238 - f * 14);
+  g.bezierCurveTo(-sw + 18, 246 - f * 8, -sw + 6, 252, -sw, 262);
+  g.lineTo(sw, 262);
+  g.bezierCurveTo(sw - 6, 252, sw - 18, 246 - f * 8, nw / 2 + 14 + f * 24, 238 - f * 14);
+  g.bezierCurveTo(nw / 2 + 6 + f * 8, 228 - f * 6, nw / 2 + 1, 214, nw / 2, 170);
+  g.closePath(); g.fill();
+  // Schattierung: Nackenseiten + Kopfschatten
+  g.fillStyle = lin(-nw / 2, 0, nw / 2, 0, [[0, 'rgba(60,30,15,.38)'], [0.35, 'rgba(60,30,15,0)'], [0.65, 'rgba(60,30,15,0)'], [1, 'rgba(60,30,15,.38)']]);
+  g.fillRect(-nw / 2 - 2, 178, nw + 4, 64);
+  g.fillStyle = 'rgba(60,30,15,.42)'; g.beginPath(); g.ellipse(0, 190, nw / 2 + 4, 14, 0, 0, 7); g.fill();
+  // Muskeln: Kopfwender + Trapezkante
+  g.strokeStyle = 'rgba(70,35,18,' + (0.28 + f * 0.3) + ')'; g.lineWidth = 1.6 + f * 1.2; g.lineCap = 'round';
+  for (const s of [-1, 1]) { g.beginPath(); g.moveTo(s * nw * 0.42, 188); g.quadraticCurveTo(s * nw * 0.3, 222, s * 6, 256); g.stroke(); }
+  if (f > 0.05) {
+    g.lineWidth = 1.4 + f; g.strokeStyle = 'rgba(70,35,18,' + (0.2 + f * 0.25) + ')';
+    for (const s of [-1, 1]) { g.beginPath(); g.moveTo(s * (nw / 2 + 4), 206); g.quadraticCurveTo(s * (nw / 2 + 14 + f * 16), 232 - f * 8, s * (sw - 8), 256); g.stroke(); }
+    g.strokeStyle = 'rgba(255,225,200,' + (0.28 * f) + ')'; g.lineWidth = 3;
+    for (const s of [-1, 1]) { g.beginPath(); g.moveTo(s * (nw / 2 + 7), 214); g.quadraticCurveTo(s * (nw / 2 + 16 + f * 14), 230 - f * 8, s * (sw - 22), 249); g.stroke(); }
+  }
+  // Schlüsselbein
+  g.strokeStyle = 'rgba(70,35,18,.25)'; g.lineWidth = 2; g.beginPath(); g.moveTo(-sw + 20, 268); g.quadraticCurveTo(-18, 262, -4, 270); g.moveTo(sw - 20, 268); g.quadraticCurveTo(18, 262, 4, 270); g.stroke();
+  // Trägershirt (Techwear)
+  const sx = nw / 2 + 18 + f * 22;
+  g.fillStyle = lin(-sw, 262, sw, 360, [[0, '#1b2236'], [1, '#090c16']]); g.beginPath();
+  g.moveTo(-sw + 2, 263); g.lineTo(-sx, 248 - f * 6); g.quadraticCurveTo(-16, 292, 0, 292); g.quadraticCurveTo(16, 292, sx, 248 - f * 6); g.lineTo(sw - 2, 263);
+  g.lineTo(sw - 6, 362); g.lineTo(-sw + 6, 362); g.closePath(); g.fill();
+  g.strokeStyle = CYAN; g.lineWidth = 1.6; glow(CYAN, 6);
+  g.beginPath(); g.moveTo(-sx, 248 - f * 6); g.quadraticCurveTo(-16, 292, 0, 292); g.quadraticCurveTo(16, 292, sx, 248 - f * 6); g.stroke();
+  g.beginPath(); g.moveTo(-24, 300); g.lineTo(-24, 340); g.moveTo(24, 300); g.lineTo(24, 340); g.stroke(); noGlow();
+  g.restore();
+
   // Kopf
-  ell(0, 170 + bob, 33, 38, SKIN);
-  ell(-34, 174 + bob, 5, 8, SKIN_D); ell(34, 174 + bob, 5, 8, SKIN_D);
-  drawCurlyHair(0, 170 + bob, true);
-  const strain = Math.max(progress, boom ? 1 : 0);
-  // Augen
-  const hy = 172 + bob;
-  for (const ex of [-13, 13]) { ell(ex, hy, 6, boom ? 6 : 5 - strain * 1.5, '#fff'); circ(ex, hy + 1, 2.6, '#2a1a10'); }
-  g.strokeStyle = '#0c0c0f'; g.lineWidth = 3; g.lineCap = 'round';
-  g.beginPath(); g.moveTo(-21, hy - 11 - strain * 2); g.lineTo(-7, hy - 7 + strain * 2); g.moveTo(21, hy - 11 - strain * 2); g.lineTo(7, hy - 7 + strain * 2); g.stroke();
-  // Nase
-  g.strokeStyle = SKIN_D; g.lineWidth = 2; g.beginPath(); g.moveTo(0, hy + 2); g.lineTo(-3, hy + 14); g.lineTo(3, hy + 14); g.stroke();
-  // Mund: zusammengebissene Zähne
-  if (boom) { rr(-13, hy + 20, 26, 11, 4, '#fff'); g.strokeStyle = '#9b2c2c'; g.lineWidth = 2; g.strokeRect(-13, hy + 20, 26, 11); g.beginPath(); g.moveTo(0, hy + 20); g.lineTo(0, hy + 31); g.stroke(); }
-  else if (strain > 0.15) { rr(-10, hy + 21, 20, 7 + strain * 4, 3, '#7a1f1f'); rect(-8, hy + 21, 16, 3, '#fff'); }
-  else { g.strokeStyle = '#9b2c2c'; g.lineWidth = 2; g.beginPath(); g.moveTo(-8, hy + 24); g.lineTo(8, hy + 24); g.stroke(); }
-  // Schweißtropfen
-  for (const s of sweat) { g.globalAlpha = Math.max(0, s.life); circ(s.x - 240, s.y, 3, '#8fd3ff'); }
+  const hy = 150;
+  curls(0, hy, false);
+  g.fillStyle = skin(-30, hy - 36, 30, hy + 40); g.beginPath(); g.ellipse(0, hy, 31, 38, 0, 0, 7); g.fill();
+  g.fillStyle = skin(-30, hy, 30, hy + 40);                                           // Kinn / Kiefer
+  g.beginPath(); g.moveTo(-30, hy + 8); g.quadraticCurveTo(-26, hy + 40, 0, hy + 42); g.quadraticCurveTo(26, hy + 40, 30, hy + 8); g.fill();
+  g.fillStyle = rad(-10, hy - 12, 2, 30, [[0, 'rgba(255,230,210,.28)'], [1, 'rgba(255,230,210,0)']]); g.fillRect(-32, hy - 38, 64, 80);
+  for (const s of [-1, 1]) { ell(s * 31, hy + 4, 4.5, 8, '#c58b68'); ell(s * 31, hy + 4, 2, 5, '#a8704f'); }
+  g.fillStyle = 'rgba(25,15,10,.30)'; g.beginPath(); g.ellipse(0, hy + 25, 20, 14, 0, 0.1, Math.PI - 0.1); g.fill();   // Bartschatten
+  curls(0, hy, true);
+  const strain = Math.max(progress, boom ? 0.9 : 0);
+  const ey = hy + 2;
+  for (const s of [-1, 1]) {
+    ell(s * 12, ey, 6, 3.6 - strain * 0.8, '#f1e9e2');
+    circ(s * 12 + s * 0.3, ey + 0.3, 2.7, '#3b2616'); circ(s * 12 + s * 0.3, ey + 0.3, 1.2, '#050505'); circ(s * 12 - 1, ey - 0.8, 0.9, '#fff');
+    g.strokeStyle = '#1a0f0a'; g.lineWidth = 1.6; g.beginPath(); g.ellipse(s * 12, ey, 6.4, 3.8 - strain * 0.8, 0, Math.PI, 0); g.stroke();
+    g.strokeStyle = '#0a0705'; g.lineWidth = 3.4; g.lineCap = 'round';
+    g.beginPath(); g.moveTo(s * 19, ey - 8 - strain * 2.5); g.lineTo(s * 5, ey - 5 + strain * 3); g.stroke();
+  }
+  g.strokeStyle = 'rgba(110,60,38,.55)'; g.lineWidth = 1.6; g.beginPath(); g.moveTo(-1, ey + 2); g.quadraticCurveTo(-4, ey + 12, -4, ey + 15); g.quadraticCurveTo(0, ey + 18, 4, ey + 15); g.stroke();   // Nase
+  ell(0, ey + 15, 5, 1.5, 'rgba(70,30,20,.35)');
+  const my = hy + 26;
+  if (strain > 0.15 || boom) {                             // Zähne zusammengebissen
+    g.fillStyle = '#6e2a28'; g.beginPath(); g.roundRect(-11, my - 4, 22, 6 + strain * 6, 4); g.fill();
+    g.fillStyle = '#f1ece6'; g.beginPath(); g.roundRect(-9.5, my - 3, 19, 4.5 + strain * 2, 2); g.fill();
+    g.strokeStyle = 'rgba(0,0,0,.25)'; g.lineWidth = 0.8; for (let i = -3; i <= 3; i++) { g.beginPath(); g.moveTo(i * 2.7, my - 3); g.lineTo(i * 2.7, my + 2.5 + strain * 2); g.stroke(); }
+  } else { g.strokeStyle = '#8a4036'; g.lineWidth = 2.2; g.beginPath(); g.moveTo(-8, my); g.quadraticCurveTo(0, my + 2, 8, my); g.stroke(); }
+  // Schweiß
+  for (const s of sweat) { g.globalAlpha = clamp(s.life, 0, 1); ell(s.x, s.y, 2, 3, 'rgba(200,235,255,.85)'); circ(s.x - .6, s.y - 1, .8, '#fff'); }
   g.globalAlpha = 1;
-  // Kopfgurt + Kette + Gewichtsscheibe
-  const lift = pulse * 14;
-  g.strokeStyle = '#2b2b33'; g.lineWidth = 7;
-  g.beginPath(); g.moveTo(-32, hy + 16); g.quadraticCurveTo(0, hy + 40, 32, hy + 16); g.stroke();
-  g.strokeStyle = '#777'; g.lineWidth = 3; g.setLineDash([6, 4]);
-  g.beginPath(); g.moveTo(0, hy + 34); g.lineTo(0, 336 - lift); g.stroke(); g.setLineDash([]);
-  circ(0, 352 - lift, 20, '#2b2b33'); circ(0, 352 - lift, 15, '#444'); circ(0, 352 - lift, 5, '#999');
-  g.fillStyle = '#ddd'; g.font = 'bold 9px system-ui'; g.textAlign = 'center'; g.fillText('20 KG', 0, 366 - lift);
   g.restore();
 }
 
 function draw() {
-  drawGym();
-  drawMan();
-
-  if (state === 'boom') {                                 // Blitz
-    const k = boomT < 0.12 ? 1 - boomT / 0.12 : 0;
-    if (k > 0) { g.fillStyle = 'rgba(255,255,255,' + (k * 0.85) + ')'; g.fillRect(0, 0, 480, 400); }
+  drawBG();
+  if (state === 'boom') {                                  // Schockwelle
+    const k = Math.min(1, boomT / 0.9); g.strokeStyle = 'rgba(61,232,255,' + (1 - k) + ')'; g.lineWidth = 5 * (1 - k) + 1; glow(CYAN, 16);
+    g.beginPath(); g.arc(240, 220, 20 + k * 300, 0, 7); g.stroke(); noGlow();
   }
+  drawMan();
+  if (state === 'boom' && boomT < 0.14) { g.fillStyle = 'rgba(200,250,255,' + (0.8 * (1 - boomT / 0.14)) + ')'; g.fillRect(0, 0, 480, 400); }
+  // Scanlines
+  g.fillStyle = 'rgba(0,0,0,.10)'; for (let y = 0; y < 400; y += 3) g.fillRect(0, y, 480, 1);
 
   // HUD
-  g.fillStyle = '#222'; g.textAlign = 'left'; g.font = 'bold 18px system-ui';
-  g.fillText('Züge: ' + clicks, 12, 26);
-  g.textAlign = 'right'; g.fillText('Rekord: ' + (best ? best + ' Züge' : '-'), 468, 26);
-  // Balken
-  rr(110, 372, 260, 18, 9, '#222');
-  rr(112, 374, 256 * progress, 14, 7, progress > 0.85 ? '#ff4d2e' : '#f5b72b');
-  g.fillStyle = '#fff'; g.font = 'bold 11px system-ui'; g.textAlign = 'center';
-  g.fillText('NACKEN-TRAINING ' + Math.round(progress * 100) + '%', 240, 385);
+  g.textAlign = 'left'; g.font = 'bold 15px ui-monospace,Menlo,monospace'; g.fillStyle = CYAN; glow(CYAN, 8);
+  g.fillText('NACKEN-LAB // ZÜGE ' + String(clicks).padStart(2, '0'), 14, 23); noGlow();
+  g.textAlign = 'right'; g.fillStyle = '#9fb7d6'; g.fillText('REKORD ' + (best ? best : '--'), 466, 23);
+  g.fillStyle = 'rgba(8,16,34,.85)'; g.beginPath(); g.roundRect(100, 372, 280, 20, 10); g.fill();
+  g.strokeStyle = 'rgba(61,232,255,.7)'; g.lineWidth = 1; g.stroke();
+  if (progress > 0) { g.fillStyle = lin(104, 0, 376, 0, [[0, CYAN], [1, progress > .85 ? MAG : '#7ab8ff']]); glow(progress > .85 ? MAG : CYAN, 10); g.beginPath(); g.roundRect(104, 376, Math.max(10, 272 * progress), 12, 6); g.fill(); noGlow(); }
+  g.fillStyle = '#fff'; g.font = 'bold 10px ui-monospace,Menlo,monospace'; g.textAlign = 'center';
+  g.fillText('TRAINING ' + Math.round(progress * 100) + '%', 240, 385);
 
   if (state === 'start' || state === 'won') {
-    g.fillStyle = 'rgba(0,0,0,.6)'; g.fillRect(0, 0, 480, 400);
-    g.fillStyle = '#fff'; g.textAlign = 'center';
+    g.fillStyle = 'rgba(3,6,16,.78)'; g.fillRect(0, 0, 480, 400);
+    g.textAlign = 'center'; glow(CYAN, 14);
     if (state === 'start') {
-      g.font = 'bold 30px system-ui'; g.fillText('Nacken Training', 240, 150);
-      g.font = '17px system-ui';
-      g.fillText('Klick / tipp so schnell du kannst: jeder Zug', 240, 195);
-      g.fillText('füllt den Balken. Der Nacken ist noch dünn...', 240, 220);
-      g.fillText('aber irgendwann passiert etwas.', 240, 245);
-      g.font = 'bold 20px system-ui'; g.fillText('Tippen zum Starten', 240, 300);
+      g.fillStyle = CYAN; g.font = 'bold 30px system-ui'; g.fillText('NACKEN-LAB', 240, 140); noGlow();
+      g.fillStyle = '#dff6ff'; g.font = '16px system-ui';
+      g.fillText('Zieh die Kurzhanteln hoch: Klick / Tipp / Leertaste.', 240, 186);
+      g.fillText('Jeder Zug füllt den Balken. Der Nacken ist noch dünn...', 240, 210);
+      g.fillText('aber das Training zeigt irgendwann Wirkung.', 240, 234);
+      g.fillStyle = MAG; g.font = 'bold 19px system-ui'; g.fillText('Tippen zum Starten', 240, 296);
     } else {
-      g.font = 'bold 36px system-ui'; g.fillStyle = '#ffd34d'; g.fillText('GEWONNEN!', 240, 100);
-      g.fillStyle = '#fff'; g.font = '20px system-ui';
-      g.fillText('Nacken wie ein Stier! Nur ' + clicks + ' Züge.', 240, 130);
-      g.font = 'bold 20px system-ui'; g.fillText('Tippen für noch eine Runde', 240, 160);
+      g.fillStyle = '#ffe14d'; g.font = 'bold 36px system-ui'; g.fillText('GEWONNEN!', 240, 78); noGlow();
+      g.fillStyle = '#dff6ff'; g.font = '17px system-ui'; g.fillText('Nacken-Upgrade nach ' + clicks + ' Zügen abgeschlossen.', 240, 104);
+      g.fillStyle = MAG; g.font = 'bold 17px system-ui'; g.fillText('Tippen für noch eine Runde', 240, 128);
     }
+    noGlow();
   }
 }
 

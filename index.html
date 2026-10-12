@@ -72,96 +72,161 @@ function update(dt) {
 function lose() { state = 'over'; held = false; best = Math.max(best, score); }
 
 /* ---------- Zeichnen ---------- */
+const SKIN = '#e0a98a', SKIN_D = '#c98c6c', HAIR = '#6b3f1e', HAIR_L = '#8d5a2d';
 function rect(x, y, w, h, c) { g.fillStyle = c; g.fillRect(x, y, w, h); }
 function circ(x, y, r, c) { g.fillStyle = c; g.beginPath(); g.arc(x, y, r, 0, 7); g.fill(); }
+function ell(x, y, rx, ry, c, rot) { g.fillStyle = c; g.beginPath(); g.ellipse(x, y, rx, ry, rot || 0, 0, 7); g.fill(); }
+function limb(x1, y1, x2, y2, w, c) {
+  g.strokeStyle = c; g.lineWidth = w; g.lineCap = 'round';
+  g.beginPath(); g.moveTo(x1, y1); g.lineTo(x2, y2); g.stroke();
+}
+function rr(x, y, w, h, r, c) {
+  g.fillStyle = c; g.beginPath(); g.roundRect(x, y, w, h, r); g.fill();
+}
 
-function drawBoss(x) {
-  // Position: schiebt sich von rechts hinter der Türkante hervor
-  const ox = 480 - 120 * x + 0;
-  g.save();
-  g.beginPath(); g.rect(330, 40, 150, 300); g.clip();   // nur der Türausschnitt sichtbar
-  rect(330, 40, 150, 300, '#2a2a38');                   // dunkler Flur
-  g.translate(ox - 395, 0);
-  const wide = boss.phase === 'look' ? 1 : 0;
-  // Körper (Blazer)
-  rect(386, 250, 52, 90, '#7a2e5a');
-  rect(398, 250, 28, 40, '#f3e9e0');
-  // Hals + Kopf
-  rect(406, 232, 12, 20, '#f2c9a5');
-  circ(412, 205, 27, '#f2c9a5');
-  // Zopf (braun) hinten dran
-  g.fillStyle = '#6b3f1e';
-  g.beginPath(); g.ellipse(440, 235, 9, 30, -0.25, 0, 7); g.fill();
-  rect(434, 196, 10, 8, '#d33');                        // Haargummi
-  // Haare oben
-  g.beginPath(); g.arc(412, 200, 28, Math.PI, 0); g.fill();
-  rect(384, 198, 56, 6, '#6b3f1e');
-  // Augen: schauen böse zum Spieler (links)
-  circ(402, 208, 5, '#fff'); circ(420, 208, 5, '#fff');
-  circ(400 - wide, 209, 2.5, '#222'); circ(418 - wide, 209, 2.5, '#222');
-  // Augenbrauen
-  g.strokeStyle = '#3a2210'; g.lineWidth = 3;
-  g.beginPath(); g.moveTo(396, 198 + wide * 0); g.lineTo(407, 202); g.moveTo(426, 198); g.lineTo(415, 202); g.stroke();
-  // Mund
-  g.strokeStyle = '#a22'; g.lineWidth = 2;
-  g.beginPath(); g.moveTo(404, 224); g.lineTo(420, 224); g.stroke();
+// Chefin: nur der Kopf guckt hinter der Wandecke hervor
+function bossPose(x) {
+  return { px: 350 + 26 * (1 - x), py: 248, rot: -0.6 * x };
+}
+function drawBossHead(x) {
+  if (x <= 0.01) return;
+  const p = bossPose(x), angry = boss.phase === 'look' ? 1 : 0.4;
+  g.save(); g.translate(p.px, p.py); g.rotate(p.rot); g.translate(0, -42);
+  rect(-8, 18, 16, 30, SKIN_D);                          // Hals
+  ell(8, 0, 22, 28, HAIR);                               // Haar hinten
+  ell(-1, 3, 24, 28, SKIN);                              // Gesicht
+  ell(-24, 6, 4, 4, SKIN);                               // Nase
+  ell(20, 6, 5, 7, SKIN_D);                              // Ohr
+  // Haare oben + Pony
+  g.fillStyle = HAIR; g.beginPath();
+  g.moveTo(-25, 2); g.bezierCurveTo(-28, -30, 26, -34, 24, 0);
+  g.bezierCurveTo(14, -14, -8, -12, -25, 2); g.fill();
+  g.strokeStyle = HAIR_L; g.lineWidth = 2; g.beginPath();
+  g.moveTo(-14, -22); g.quadraticCurveTo(0, -30, 14, -22); g.stroke();
+  // Augen
+  for (const ex of [-15, 0]) {
+    ell(ex, 4, 5.5, 4.5, '#fff');
+    circ(ex - 1.5, 4.5, 2.6, '#3a2415'); circ(ex - 2, 4, 1, '#fff');
+  }
+  // Augenbrauen (böse)
+  g.strokeStyle = '#3a2210'; g.lineWidth = 2.6; g.lineCap = 'round';
+  g.beginPath();
+  g.moveTo(-21, -4 - 3 * angry); g.lineTo(-9, -1 + 1 * angry);
+  g.moveTo(5, -4 - 3 * angry); g.lineTo(-5, -1 + 1 * angry); g.stroke();
+  ell(-14, 14, 5, 3, 'rgba(230,100,100,.35)');           // Wange
+  g.strokeStyle = '#9b2c2c'; g.lineWidth = 2;            // Mund
+  g.beginPath(); g.moveTo(-17, 20); g.quadraticCurveTo(-10, 17, -3, 20); g.stroke();
+  g.restore();
+}
+function drawBossTail(x) {
+  if (x < 0.3) return;
+  const p = bossPose(x);
+  g.save(); g.translate(p.px, p.py); g.rotate(p.rot); g.translate(0, -42);
+  g.strokeStyle = HAIR; g.lineWidth = 12; g.lineCap = 'round';
+  g.beginPath(); g.moveTo(24, -14); g.bezierCurveTo(44, -4, 40, 30, 34, 58); g.stroke();
+  g.strokeStyle = HAIR_L; g.lineWidth = 3;
+  g.beginPath(); g.moveTo(26, -12); g.bezierCurveTo(42, -2, 38, 28, 33, 52); g.stroke();
+  rect(20, -19, 9, 10, '#d33');                          // Haargummi
   g.restore();
 }
 
+function drawTrainer() {
+  const lean = 0.1 * phone;
+  // Stuhl
+  rr(60, 246, 12, 64, 5, '#2b2b33');
+  rr(66, 306, 80, 10, 5, '#3a3a45');
+  rect(102, 316, 6, 24, '#2b2b33');
+  rect(80, 338, 50, 5, '#2b2b33');
+  circ(82, 346, 4, '#111'); circ(105, 346, 4, '#111'); circ(128, 346, 4, '#111');
+  // Unterschenkel + Schuh
+  limb(150, 306, 160, 336, 15, SKIN);
+  rr(150, 334, 30, 11, 5, '#f4f4f4'); rect(150, 342, 30, 3, '#d33');
+  // Oberschenkel in Shorts
+  rr(88, 296, 76, 22, 9, '#233252');
+  // Oberkörper (breite Schultern, schmale Taille)
+  g.fillStyle = '#e8512b'; g.beginPath();
+  g.moveTo(84, 258); g.bezierCurveTo(80, 246, 118, 238, 126, 256);
+  g.bezierCurveTo(130, 272, 120, 288, 118, 302); g.lineTo(88, 302);
+  g.bezierCurveTo(84, 286, 80, 272, 84, 258); g.fill();
+  g.fillStyle = 'rgba(0,0,0,.18)'; g.beginPath();
+  g.moveTo(84, 270); g.bezierCurveTo(88, 284, 90, 292, 90, 302); g.lineTo(100, 302); g.bezierCurveTo(96, 286, 92, 276, 92, 262); g.fill();
+  g.strokeStyle = '#fff'; g.lineWidth = 2;               // Logo-Streifen
+  g.beginPath(); g.moveTo(98, 270); g.lineTo(118, 270); g.stroke();
+  // Kopf (leicht nach unten geneigt, wenn er aufs Handy schaut)
+  g.save(); g.translate(104, 244); g.rotate(lean);
+  rect(-7, -10, 14, 14, SKIN_D);                         // Hals
+  ell(2, -24, 17, 20, SKIN);                             // Gesicht
+  ell(-8, -24, 4, 6, SKIN_D);                            // Ohr
+  ell(19, -22, 4, 3.5, SKIN);                            // Nase
+  g.fillStyle = '#2a1a10'; g.beginPath();                // kurze Haare
+  g.moveTo(-14, -26); g.bezierCurveTo(-18, -50, 20, -52, 19, -30);
+  g.bezierCurveTo(10, -38, -4, -36, -14, -26); g.fill();
+  rect(-15, -36, 34, 6, '#d33');                         // Stirnband
+  ell(11, -25, 3.6, 2.8, '#fff'); circ(12, -25, 1.8, '#2a1a10');   // Auge
+  g.strokeStyle = '#2a1a10'; g.lineWidth = 2.4; g.lineCap = 'round';
+  g.beginPath(); g.moveTo(6, -31); g.lineTo(16, -29); g.stroke();   // Braue
+  g.strokeStyle = '#8a4b3a'; g.lineWidth = 1.8;
+  g.beginPath(); g.moveTo(10, -12); g.lineTo(17, -13); g.stroke();  // Mund
+  g.fillStyle = 'rgba(40,25,15,.25)';                    // Bartschatten
+  g.beginPath(); g.ellipse(6, -10, 12, 6, 0, 0, Math.PI); g.fill();
+  g.restore();
+  // Arm: Schulter -> Ellbogen -> Hand (Tastatur oder Handy)
+  const hx = 166 - 22 * phone, hy = 266 - 18 * phone;
+  limb(112, 262, 120, 288, 15, SKIN);                    // Oberarm
+  ell(114, 272, 10, 12, SKIN, 0.3);                      // Bizeps
+  ell(111, 268, 4, 6, 'rgba(255,255,255,.18)', 0.3);
+  limb(120, 288, hx, hy, 11, SKIN);                      // Unterarm
+  if (phone > 0.05) {                                    // Handy in der Hand
+    g.save(); g.translate(hx + 2, hy - 14); g.rotate(-0.15);
+    g.globalAlpha = Math.min(1, phone * 1.5);
+    rr(-9, -18, 18, 34, 4, '#111'); rr(-7, -15, 14, 28, 2, '#7fe3ff');
+    rect(-5, -11, 10, 3, 'rgba(255,255,255,.7)'); rect(-5, -5, 7, 3, 'rgba(255,255,255,.5)');
+    g.restore();
+  }
+  circ(hx + 2, hy + 1, 6, SKIN);                         // Hand
+}
+
 function draw() {
-  // Büro
+  const bx = boss ? boss.x : 0;
+  // Raum
   rect(0, 0, 480, 400, '#d9d4c7');
-  rect(0, 340, 480, 60, '#8a6a4b');                      // Boden
-  rect(0, 0, 480, 40, '#cfc9ba');
-  // Tür / Flur rechts
-  rect(325, 35, 160, 310, '#4a3a2a');
-  drawBoss(boss ? boss.x : 0);
-  // Türrahmen-Kante
-  rect(325, 35, 8, 310, '#3a2d20');
+  rect(0, 0, 480, 34, '#cbc5b5');
+  rect(0, 340, 480, 60, '#8a6a4b'); rect(0, 340, 480, 4, '#6e5239');
+  rect(0, 334, 480, 6, '#b9b2a0');                       // Fußleiste
+  // Poster + Uhr
+  rr(24, 70, 64, 90, 3, '#2b3a55'); rect(30, 76, 52, 78, '#e8512b');
+  g.fillStyle = '#fff'; g.font = 'bold 14px system-ui'; g.textAlign = 'center';
+  g.fillText('NO PAIN', 56, 106); g.fillText('NO GAIN', 56, 124);
+  circ(210, 78, 22, '#fff'); circ(210, 78, 22, 'rgba(0,0,0,.05)');
+  g.strokeStyle = '#333'; g.lineWidth = 3; g.beginPath(); g.arc(210, 78, 22, 0, 7); g.stroke();
+  g.lineWidth = 2; g.beginPath(); g.moveTo(210, 78); g.lineTo(210, 64); g.moveTo(210, 78); g.lineTo(220, 82); g.stroke();
+  // Flur hinter der Ecke
+  rect(318, 34, 40, 306, '#33303d');
+  drawBossHead(bx);
+  // Wand vorne (Ecke)
+  rect(338, 34, 142, 306, '#cbc5b5');
+  rect(338, 34, 5, 306, '#a9a391');
+  rect(343, 34, 10, 306, 'rgba(0,0,0,.08)');
+  rect(338, 334, 142, 6, '#b9b2a0');
+  drawBossTail(bx);
 
   // Warnung
   if (state === 'play' && boss.phase === 'peek') {
-    g.fillStyle = '#e22'; g.font = 'bold 44px system-ui'; g.textAlign = 'center';
-    g.fillText('!', 305, 80);
+    g.fillStyle = '#e22'; g.font = 'bold 46px system-ui'; g.textAlign = 'center';
+    g.fillText('!', 316, 150);
   }
 
   // Schreibtisch + PC
-  rect(40, 270, 260, 14, '#6b4a2b');
-  rect(60, 284, 10, 60, '#5a3d22'); rect(270, 284, 10, 60, '#5a3d22');
-  rect(120, 190, 110, 70, '#222'); rect(126, 196, 98, 56, '#3d7bd8');   // Monitor
-  rect(170, 260, 10, 10, '#222');
-  rect(50, 262, 6, 8, '#aaa');
-  // Bildschirm: sieht arbeitsmäßig aus
-  rect(132, 204, 60, 5, '#fff'); rect(132, 214, 80, 5, '#cfe'); rect(132, 224, 50, 5, '#cfe'); rect(132, 234, 70, 5, '#cfe');
+  rr(34, 270, 270, 12, 3, '#7a5330'); rect(34, 280, 270, 4, '#5a3d22');
+  rect(52, 284, 10, 56, '#5a3d22'); rect(276, 284, 10, 56, '#5a3d22');
+  rect(206, 252, 10, 18, '#2b2b33'); rr(196, 266, 30, 5, 2, '#2b2b33');
+  rr(170, 186, 108, 68, 5, '#2b2b33'); rr(176, 192, 96, 56, 3, '#3d7bd8');
+  rect(182, 200, 50, 5, '#fff'); rect(182, 211, 78, 4, '#cfe3ff'); rect(182, 220, 60, 4, '#cfe3ff'); rect(182, 229, 70, 4, '#cfe3ff');
+  rr(150, 264, 56, 6, 2, '#bbb');                        // Tastatur
+  rr(236, 262, 8, 8, 2, '#444');                         // Maus-Pad Stift
+  rect(250, 262, 14, 8, '#e8512b');                      // Kaffeetasse
 
-  // Stuhl
-  rect(70, 300, 70, 10, '#333'); rect(100, 310, 8, 30, '#333');
-  // Fitness-Trainer (sitzt, schaut nach rechts)
-  rect(78, 255, 40, 48, '#e8512b');                      // Tanktop
-  rect(84, 300, 70, 16, '#2b3a55');                      // Oberschenkel
-  rect(146, 300, 14, 40, '#2b3a55');                     // Unterschenkel
-  rect(142, 338, 26, 8, '#fff');                         // Schuh
-  circ(100, 232, 20, '#e8b48a');                         // Kopf
-  rect(80, 214, 40, 8, '#c11');                          // Stirnband
-  g.fillStyle = '#3a2210'; g.beginPath(); g.arc(100, 228, 20, Math.PI, 0); g.fill();
-  rect(80, 222, 40, 5, '#c11');
-  circ(110, 234, 2.5, '#222');                           // Auge
-  // Arm mit großem Bizeps
-  const ax = 108 + phone * 0, ay = 268 - phone * 14;
-  g.fillStyle = '#e8b48a';
-  g.beginPath(); g.ellipse(112, 275, 14, 11, 0, 0, 7); g.fill();
-  rect(112, 270 - phone * 14, 24 + phone * 10, 12, '#e8b48a');
-
-  // Handy: oben (benutzt) oder unter dem Tisch (weg)
-  const py = 300 - phone * 40;
-  const px = 150 + phone * 8;
-  g.save();
-  g.globalAlpha = 0.25 + 0.75 * phone;
-  rect(px, py - phone * 6, 22, 38, '#111');
-  rect(px + 2, py + 2 - phone * 6, 18, 30, '#7fe3ff');
-  circ(px + 11, py + 20 - phone * 6, 3, '#fff');
-  g.restore();
-  circ(px + 20, py + 8 - phone * 6 + 6, 6, '#e8b48a');  // Hand
+  drawTrainer();
 
   // HUD
   g.fillStyle = '#222'; g.textAlign = 'left'; g.font = 'bold 18px system-ui';

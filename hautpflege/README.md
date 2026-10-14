@@ -38,7 +38,7 @@ Optional: Script-Property `ICON_URL` mit einer öffentlichen PNG-URL setzt das F
 ## Homescreen-Icon auf dem iPhone
 
 Apps Script liefert die App in einem iframe aus und erlaubt keinen eigenen `apple-touch-icon`-Link auf der äußeren Seite.
-`Code.gs` setzt per `addMetaTag()` alles, was möglich ist (`apple-mobile-web-app-capable`, Statusleiste, Viewport) –
+`Code.gs` setzt per `addMetaTag()` alles, was möglich ist (`apple-mobile-web-app-capable`, Viewport) –
 die App öffnet sich damit ohne Safari-Leisten. Das Icon ist dann aber ein Screenshot der Seite.
 
 Für das **eigene Icon** den Ordner `launcher/` irgendwo statisch hosten (z. B. GitHub Pages), in `launcher/index.html`

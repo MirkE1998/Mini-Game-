@@ -52,12 +52,17 @@ var HISTORY_DAYS = 400;
 function doGet() {
   var out = HtmlService.createTemplateFromFile('Index').evaluate()
     .setTitle('Hautritual')
-    .addMetaTag('viewport', 'width=device-width, initial-scale=1, viewport-fit=cover')
-    .addMetaTag('apple-mobile-web-app-capable', 'yes')
-    .addMetaTag('mobile-web-app-capable', 'yes')
-    .addMetaTag('apple-mobile-web-app-status-bar-style', 'default')
     // Erlaubt das Einbetten über launcher/index.html (eigenes Homescreen-Icon).
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+  // Apps Script akzeptiert nur wenige Meta-Tags und wirft sonst eine Exception.
+  // Jeder Tag wird einzeln gesetzt, damit ein abgelehnter Tag die App nicht blockiert.
+  [
+    ['viewport', 'width=device-width, initial-scale=1, viewport-fit=cover'],
+    ['apple-mobile-web-app-capable', 'yes'],
+    ['mobile-web-app-capable', 'yes']
+  ].forEach(function (tag) {
+    try { out.addMetaTag(tag[0], tag[1]); } catch (err) { console.warn('Meta-Tag nicht erlaubt: ' + tag[0]); }
+  });
   var icon = PropertiesService.getScriptProperties().getProperty('ICON_URL');
   if (icon) out.setFaviconUrl(icon);
   return out;

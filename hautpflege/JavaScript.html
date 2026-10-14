@@ -1,0 +1,1469 @@
+<script>
+'use strict';
+
+/* =====================================================================
+   Konstanten
+   ===================================================================== */
+
+const PROFILES = [{ id: 'bibi', name: 'Bibi' }, { id: 'bubu', name: 'Bubu' }];
+
+// Die zehn koreanischen Schritte in Anwendungsreihenfolge.
+const STEPS = [
+  { key: 'cleanser_oil',   name: 'Ölreinigung',          desc: 'Löst Sonnenschutz und Make-up' },
+  { key: 'cleanser_water', name: 'Reinigung',            desc: 'Wasserbasiert, sanft schäumend' },
+  { key: 'exfoliant',      name: 'Peeling',              desc: 'Löst abgestorbene Hautschüppchen' },
+  { key: 'toner',          name: 'Toner',                desc: 'Gleicht aus und bereitet vor' },
+  { key: 'essence',        name: 'Essenz',               desc: 'Leichte Feuchtigkeit in Schichten' },
+  { key: 'serum',          name: 'Serum & Ampulle',      desc: 'Konzentrierte Wirkstoffe' },
+  { key: 'sheet_mask',     name: 'Tuchmaske',            desc: 'Intensivpflege zwischendurch' },
+  { key: 'eye_cream',      name: 'Augenpflege',          desc: 'Für die zarte Augenpartie' },
+  { key: 'moisturizer',    name: 'Feuchtigkeitscreme',   desc: 'Versiegelt die Pflege' },
+  { key: 'sunscreen',      name: 'Sonnenschutz',         desc: 'Jeden Morgen, auch bei Wolken' }
+];
+const STEP = Object.fromEntries(STEPS.map((s, i) => [s.key, { ...s, order: i }]));
+
+const SKIN_TYPES = [
+  { key: 'dry',         name: 'Trocken',     desc: 'Spannt oft, wenig Glanz' },
+  { key: 'oily',        name: 'Fettig',      desc: 'Glänzt schnell, größere Poren' },
+  { key: 'combination', name: 'Mischhaut',   desc: 'T-Zone fettig, Wangen eher trocken' },
+  { key: 'sensitive',   name: 'Empfindlich', desc: 'Rötet sich leicht, reagiert schnell' }
+];
+const GOALS = [
+  { key: 'hydration', name: 'Feuchtigkeit' },
+  { key: 'blemishes', name: 'Unreinheiten' },
+  { key: 'glow',      name: 'Glow' },
+  { key: 'wrinkles',  name: 'Falten' }
+];
+const TIMES = [
+  { key: 'morning', name: 'Morgens', icon: 'sun' },
+  { key: 'evening', name: 'Abends',  icon: 'moon' }
+];
+// Wochentage in Anzeige-Reihenfolge (Mo zuerst); d = JS getDay()
+const WEEKDAYS = [[1, 'Mo'], [2, 'Di'], [3, 'Mi'], [4, 'Do'], [5, 'Fr'], [6, 'Sa'], [0, 'So']];
+const WD_SHORT = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
+const RATINGS = ['', 'gereizt', 'unruhig', 'okay', 'gut', 'strahlend'];
+
+// Standard-Zeitpunkte und -Häufigkeiten pro Schritt (Sonnenschutz nur morgens).
+const STEP_DEFAULTS = {
+  cleanser_oil:   { morning: false, evening: true,  freq: 'daily' },
+  cleanser_water: { morning: true,  evening: true,  freq: 'daily' },
+  exfoliant:      { morning: false, evening: true,  freq: 'days:2,5' },
+  toner:          { morning: true,  evening: true,  freq: 'daily' },
+  essence:        { morning: true,  evening: true,  freq: 'daily' },
+  serum:          { morning: false, evening: true,  freq: 'daily' },
+  sheet_mask:     { morning: false, evening: true,  freq: 'days:0' },
+  eye_cream:      { morning: true,  evening: true,  freq: 'daily' },
+  moisturizer:    { morning: true,  evening: true,  freq: 'daily' },
+  sunscreen:      { morning: true,  evening: false, freq: 'daily' }
+};
+
+const EXPIRY_WARN_DAYS = 14;
+const LOW_PERCENT = 20;
+
+/* =====================================================================
+   Icons (inline SVG, 24er-Raster, Linienstil)
+   ===================================================================== */
+
+const I = {
+  home: '<path d="M3.5 10.5 12 3.5l8.5 7V19a1.5 1.5 0 0 1-1.5 1.5h-4v-6h-6v6H5A1.5 1.5 0 0 1 3.5 19z"/>',
+  calendar: '<rect x="3.5" y="5" width="17" height="15.5" rx="3"/><path d="M3.5 10h17M8 3v4M16 3v4"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
+  shelf: '<path d="M3.5 20.5h17M3.5 12.5h17"/><rect x="5.5" y="6" width="3" height="6.5" rx="1"/><rect x="10.5" y="3.5" width="3.2" height="9" rx="1.2"/><rect x="15.5" y="7.5" width="3" height="5" rx="1"/><rect x="6.5" y="15" width="4" height="5.5" rx="1.2"/><rect x="13" y="16.5" width="4.5" height="4" rx="1.2"/>',
+  user: '<circle cx="12" cy="8" r="4"/><path d="M4.5 20.5c1.4-3.8 4.2-5.5 7.5-5.5s6.1 1.7 7.5 5.5"/>',
+  timer: '<circle cx="12" cy="13.5" r="7.5"/><path d="M12 9.5v4l2.5 2M9.5 2.5h5M12 2.5V6"/>',
+  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M2.5 12h2M19.5 12h2M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/>',
+  moon: '<path d="M19.5 14.5A7.5 7.5 0 1 1 9.5 4.5a6 6 0 0 0 10 10z"/>',
+  check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
+  chevR: '<path d="M9.5 5.5 16 12l-6.5 6.5"/>',
+  chevL: '<path d="M14.5 5.5 8 12l6.5 6.5"/>',
+  close: '<path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/>',
+  alert: '<path d="M12 3.5 2.5 20h19z"/><path d="M12 10v4.5M12 17.2v.3"/>',
+  play: '<path d="M8 5.5v13l10.5-6.5z"/>',
+  pause: '<path d="M8.5 5.5v13M15.5 5.5v13"/>',
+  reset: '<path d="M4.5 12a7.5 7.5 0 1 0 2.3-5.4"/><path d="M4.5 4v4h4"/>',
+  trash: '<path d="M4.5 6.5h15M9.5 6.5V4h5v2.5M6.5 6.5l1 13.5h9l1-13.5M10.5 10.5v6M13.5 10.5v6"/>',
+  bell: '<path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/>',
+  swap: '<path d="M7 4.5 3.5 8 7 11.5M3.5 8h13M17 12.5l3.5 3.5-3.5 3.5M20.5 16h-13"/>',
+  refresh: '<path d="M19.5 12a7.5 7.5 0 0 1-13.2 4.9M4.5 12a7.5 7.5 0 0 1 13.2-4.9"/><path d="M18 3.5v4h-4M6 20.5v-4h4"/>',
+  edit: '<path d="M4.5 19.5h4l10-10-4-4-10 10z"/><path d="M13 7l4 4"/>',
+  leaf: '<path d="M5 19c0-8 5-13.5 14.5-14.5C19 14 13.5 19 5 19z"/><path d="M5 19c3-4 6-7 9.5-9"/>',
+  heart: '<path d="M12 19.5s-7.5-4.6-7.5-10a4 4 0 0 1 7.5-2 4 4 0 0 1 7.5 2c0 5.4-7.5 10-7.5 10z"/>',
+  notes: '<rect x="5" y="3.5" width="14" height="17" rx="2.5"/><path d="M8.5 8.5h7M8.5 12h7M8.5 15.5h4"/>',
+  // Schritte
+  cleanser_oil: '<path d="M12 3c3.6 4.6 6 7.7 6 10.6a6 6 0 0 1-12 0C6 10.7 8.4 7.6 12 3z"/><path d="M9.2 14.2a2.8 2.8 0 0 0 2.8 2.8"/>',
+  cleanser_water: '<circle cx="9" cy="14.5" r="5"/><circle cx="16.5" cy="7.5" r="3"/><circle cx="18" cy="16" r="1.8"/>',
+  exfoliant: '<circle cx="12" cy="12" r="8.5"/><circle cx="9" cy="9.5" r=".9"/><circle cx="14.5" cy="8.5" r=".9"/><circle cx="15.5" cy="13.5" r=".9"/><circle cx="10" cy="15" r=".9"/><circle cx="12.3" cy="12" r=".9"/>',
+  toner: '<path d="M10 2.5h4v3h-4z"/><path d="M9 5.5h6l1.5 3v11.5a1.5 1.5 0 0 1-1.5 1.5H9A1.5 1.5 0 0 1 7.5 20V8.5z"/><path d="M7.5 12h9"/>',
+  essence: '<path d="M11 3.5c.8 4.4 2.3 6 6.5 6.8-4.2.8-5.7 2.4-6.5 6.8-.8-4.4-2.3-6-6.5-6.8 4.2-.8 5.7-2.4 6.5-6.8z"/><path d="M18.5 15.5v5M16 18h5"/>',
+  serum: '<path d="M14 3.5l6.5 6.5M15.5 5 7 13.5a2.8 2.8 0 0 0 4 4L19.5 9"/><path d="M8.5 15.5 3.5 20.5"/>',
+  sheet_mask: '<path d="M12 3c4.4 0 7 3.3 7 8 0 5.7-3.5 10-7 10s-7-4.3-7-10c0-4.7 2.6-8 7-8z"/><path d="M8.8 10.5h1.8M13.4 10.5h1.8M10 15.5c1.2.8 2.8.8 4 0"/>',
+  eye_cream: '<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/>',
+  moisturizer: '<rect x="4" y="10" width="16" height="10" rx="3"/><path d="M5.5 10V8a1.5 1.5 0 0 1 1.5-1.5h10A1.5 1.5 0 0 1 18.5 8v2M8 14.5h8"/>',
+  sunscreen: '<circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M2.5 12h2M19.5 12h2M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/>'
+};
+
+function icon(name, size = 22, stroke = 1.6) {
+  return `<svg class="ic" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${stroke}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${I[name] || ''}</svg>`;
+}
+
+/* =====================================================================
+   Helfer
+   ===================================================================== */
+
+const $ = (sel, root = document) => root.querySelector(sel);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const pad = n => String(n).padStart(2, '0');
+const ymd = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const parseYmd = s => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); };
+const today = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; };
+const todayStr = () => ymd(today());
+const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
+const daysInMonth = d => new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+function addMonths(d, n) {
+  const x = new Date(d); const day = x.getDate();
+  x.setDate(1); x.setMonth(x.getMonth() + n);
+  x.setDate(Math.min(day, daysInMonth(x)));
+  return x;
+}
+const diffDays = (a, b) => Math.round((parseYmd(ymd(b)) - parseYmd(ymd(a))) / 864e5);
+const fmtDate = (d, o = { day: '2-digit', month: '2-digit', year: 'numeric' }) => d.toLocaleDateString('de-DE', o);
+const fmtMs = ms => { const s = Math.ceil(ms / 1000); return `${pad(Math.floor(s / 60))}:${pad(s % 60)}`; };
+const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+
+function daysOf(freq) {
+  return !freq || freq === 'daily' ? [] : freq.slice(5).split(',').filter(String).map(Number);
+}
+const freqFrom = days => 'days:' + [...days].sort((a, b) => a - b).join(',');
+const activeOn = (freq, date) => !freq || freq === 'daily' || daysOf(freq).includes(date.getDay());
+function freqLabel(freq) {
+  if (!freq || freq === 'daily') return 'täglich';
+  const days = daysOf(freq);
+  return WEEKDAYS.filter(([d]) => days.includes(d)).map(([, l]) => l).join(', ') || '–';
+}
+
+/* =====================================================================
+   Backend-Anbindung
+   ===================================================================== */
+
+const HAS_GAS = typeof google !== 'undefined' && google.script && google.script.run;
+
+function api(fn, ...args) {
+  if (!HAS_GAS) {
+    // Lokaler Demo-Modus (siehe Mock unten) – leicht verzögert wie ein echter Server.
+    return new Promise((res, rej) => setTimeout(() => {
+      try { res(JSON.parse(JSON.stringify(Mock[fn](...args)))); } catch (e) { rej(e); }
+    }, 120));
+  }
+  return new Promise((res, rej) => {
+    google.script.run.withSuccessHandler(res).withFailureHandler(rej)[fn](...args);
+  });
+}
+
+const errMsg = e => (e && (e.message || e)) ? String(e.message || e).replace(/^Exception:\s*/, '') : 'Unbekannter Fehler';
+
+/* =====================================================================
+   Zustand
+   ===================================================================== */
+
+const LS = {
+  get(k, def = null) { try { const v = localStorage.getItem(k); return v == null ? def : JSON.parse(v); } catch (e) { return def; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* privater Modus */ } },
+  del(k) { try { localStorage.removeItem(k); } catch (e) { /* ignorieren */ } }
+};
+
+const S = {
+  loaded: false,
+  fresh: false,   // true, sobald Daten vom Server (nicht nur aus dem Cache) da sind
+  loadError: null,
+  data: { profiles: [], routineSteps: [], products: [], logs: [], skinLog: [] },
+  logIndex: new Map(),
+  me: LS.get('hr.profile'),
+  route: { name: 'home', params: {} },
+  stack: [],
+  ob: null,
+  cal: null,
+  shelfFilter: 'all',
+  sheet: null
+};
+
+const logKey = (pid, date, step, time) => `${pid}|${date}|${step}|${time}`;
+
+function setData(d) {
+  S.data = Object.assign({ profiles: [], routineSteps: [], products: [], logs: [], skinLog: [] }, d);
+  S.logIndex = new Map(S.data.logs.map(l => [logKey(l.profileId, l.date, l.stepKey, l.timeOfDay), !!l.done]));
+  LS.set('hr.cache', S.data);
+}
+const persist = () => LS.set('hr.cache', S.data);
+
+const me = () => S.data.profiles.find(p => p.id === S.me);
+const profileName = id => (S.data.profiles.find(p => p.id === id) || PROFILES.find(p => p.id === id) || { name: id }).name;
+const routineOf = pid => S.data.routineSteps.filter(r => r.profileId === pid);
+const byStep = (a, b) => STEP[a.stepKey].order - STEP[b.stepKey].order;
+const planned = (pid, date, time) => routineOf(pid).filter(r => r.timeOfDay === time && activeOn(r.frequency, date)).sort(byStep);
+const isDone = (pid, date, step, time) => S.logIndex.get(logKey(pid, date, step, time)) === true;
+const productById = id => S.data.products.find(p => p.id === id);
+const visibleProducts = pid => S.data.products.filter(p => (p.sharedWith || []).includes(pid));
+
+// STANDARD: Für vergangene Tage wird die *aktuelle* Routine als Plan verwendet
+// (Routineänderungen werden nicht historisiert).
+function progress(pid, date, time) {
+  const ds = ymd(date);
+  const steps = planned(pid, date, time);
+  return { total: steps.length, done: steps.filter(s => isDone(pid, ds, s.stepKey, s.timeOfDay)).length };
+}
+function dayProgress(pid, date) {
+  const m = progress(pid, date, 'morning'), e = progress(pid, date, 'evening');
+  return { m, e, total: m.total + e.total, done: m.done + e.done };
+}
+
+function setLocalLog(entry) {
+  const k = logKey(entry.profileId, entry.date, entry.stepKey, entry.timeOfDay);
+  S.logIndex.set(k, entry.done);
+  const existing = S.data.logs.find(l => logKey(l.profileId, l.date, l.stepKey, l.timeOfDay) === k);
+  if (existing) existing.done = entry.done; else S.data.logs.push({ ...entry });
+}
+
+function expiry(p) {
+  if (!p.openedAt || !p.paoMonths) return null;
+  const opened = parseYmd(p.openedAt);
+  const date = addMonths(opened, p.paoMonths);
+  return { date, days: diffDays(today(), date), total: Math.max(1, diffDays(opened, date)) };
+}
+function restLabel(p) {
+  const e = expiry(p);
+  if (!e) return 'ungeöffnet';
+  if (e.days < 0) return 'abgelaufen';
+  if (e.days === 0) return 'läuft heute ab';
+  if (e.days <= 60) return 'noch ' + plural(e.days, 'Tag', 'Tage');
+  const m = Math.floor(e.days / 30.44);
+  return 'noch ' + plural(m, 'Monat', 'Monate');
+}
+function restTone(p) {
+  const e = expiry(p);
+  if (!e) return '';
+  if (e.days <= EXPIRY_WARN_DAYS) return 'warn';
+  if (e.days <= 60) return 'rose';
+  return 'sage';
+}
+const isLow = p => Number(p.remainingPercent) < LOW_PERCENT;
+const expiringSoon = p => { const e = expiry(p); return e && e.days <= EXPIRY_WARN_DAYS; };
+
+/* =====================================================================
+   Routing & Rendern
+   ===================================================================== */
+
+function go(name, params = {}, { push = true } = {}) {
+  if (push) S.stack.push(S.route);
+  S.route = { name, params };
+  closeSheet();
+  render();
+  window.scrollTo(0, 0);
+}
+function back() {
+  const prev = S.stack.pop() || { name: 'home', params: {} };
+  S.route = prev;
+  render();
+  window.scrollTo(0, 0);
+}
+
+function render() {
+  const view = $('#view');
+  let html, tabs = true, footer = false;
+  if (!S.loaded) {
+    html = S.loadError ? viewLoadError() : '<div class="loading"><div><div class="spinner"></div><div class="muted small">Einen Moment …</div></div></div>';
+    tabs = false;
+  } else if (!S.me || !me()) {
+    html = viewProfiles(); tabs = false;
+  } else if (S.ob) {
+    html = viewOnboarding(); tabs = false; footer = true;
+  } else if (!me().onboarded) {
+    // Onboarding erst starten, wenn der Server bestätigt hat, dass es noch fehlt
+    // (der Cache könnte veraltet sein, z. B. nach Einrichtung auf einem anderen Gerät).
+    if (!S.fresh) { view.innerHTML = '<div class="loading"><div><div class="spinner"></div></div></div>'; document.body.classList.add('no-tabs'); Timer.renderFab(); return; }
+    startOnboarding();
+    return render();
+  } else {
+    const views = { home: viewHome, routine: viewRoutine, calendar: viewCalendar, shelf: viewShelf, product: viewProduct, profile: viewProfile };
+    html = (views[S.route.name] || viewHome)();
+  }
+  view.innerHTML = html;
+  document.body.classList.toggle('no-tabs', !tabs);
+  document.body.classList.toggle('has-footer', footer);
+  renderTabbar();
+  Timer.renderFab();
+}
+
+function renderTabbar() {
+  const r = S.route.name;
+  const active = { home: 'home', routine: 'home', calendar: 'calendar', shelf: 'shelf', product: 'shelf', profile: 'profile' }[r];
+  const tab = (key, label, ic) =>
+    `<button class="tab ${active === key ? 'on' : ''}" data-act="tab" data-to="${key}" ${active === key ? 'aria-current="page"' : ''}>${icon(ic, 24)}<span>${label}</span></button>`;
+  $('#tabbar').innerHTML = `<div class="inner">
+    ${tab('home', 'Heute', 'home')}
+    ${tab('calendar', 'Kalender', 'calendar')}
+    <div><button class="tab-plus" data-act="quickAdd" aria-label="Hinzufügen">${icon('plus', 26, 2)}</button></div>
+    ${tab('shelf', 'Regal', 'shelf')}
+    ${tab('profile', 'Profil', 'user')}
+  </div>`;
+}
+
+/* ---------- gemeinsame Bausteine ---------- */
+
+function ring(done, total, size = 132, stroke = 10, label = true) {
+  const r = (size - stroke) / 2, c = 2 * Math.PI * r;
+  const pct = total ? done / total : 0;
+  const complete = total > 0 && done >= total;
+  return `<div class="ring-wrap" style="width:${size}px;height:${size}px">
+    <svg width="${size}" height="${size}" aria-hidden="true">
+      <circle class="ring-track" cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke-width="${stroke}"/>
+      <circle class="ring-bar ${complete ? 'done' : ''}" cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke-width="${stroke}"
+        stroke-linecap="round" stroke-dasharray="${c}" stroke-dashoffset="${c * (1 - pct)}"/>
+    </svg>
+    ${label ? `<div class="ring-label"><div><div class="ring-num">${done}<span style="color:var(--cocoa-3);font-size:.6em">/${total}</span></div><div class="tiny muted" style="margin-top:2px">Schritte</div></div></div>`
+      : `<div class="ring-label">${complete ? `<span style="color:var(--sage-ink)">${icon('check', 18, 2.2)}</span>` : ''}</div>`}
+  </div>`;
+}
+
+const bar = (done, total) => `<div class="bar ${total && done >= total ? 'done' : ''}"><i style="width:${total ? Math.round(done / total * 100) : 0}%"></i></div>`;
+const avatar = (id, sm) => `<div class="avatar ${sm ? 'sm' : ''} av-${id}" aria-hidden="true">${esc(profileName(id).charAt(0))}</div>`;
+const topbar = (title, right = '<span style="width:44px"></span>') =>
+  `<div class="topbar"><button class="icon-btn" data-act="back" aria-label="Zurück">${icon('chevL')}</button><div class="grow">${title}</div>${right}</div>`;
+
+/* =====================================================================
+   Screen 1: Profilauswahl
+   ===================================================================== */
+
+function viewProfiles() {
+  const cards = PROFILES.map(p => {
+    const prof = S.data.profiles.find(x => x.id === p.id);
+    const steps = new Set(routineOf(p.id).map(r => r.stepKey)).size;
+    const status = prof && prof.onboarded ? `Routine mit ${plural(steps, 'Schritt', 'Schritten')}` : 'Noch nicht eingerichtet';
+    return `<div class="card profile-pick">
+      ${avatar(p.id)}
+      <div class="h2" style="margin-top:14px">${esc(profileName(p.id))}</div>
+      <div class="muted small">${status}</div>
+      <button class="btn btn-primary" style="margin-top:18px;min-width:190px" data-act="pickProfile" data-id="${p.id}">Ich bin das</button>
+    </div>`;
+  }).join('');
+  return `<div style="text-align:center;padding-top:32px">
+      <div style="color:var(--accent);display:inline-block">${icon('leaf', 34, 1.3)}</div>
+      <div class="eyebrow" style="margin-top:10px">Hautritual</div>
+      <h1 class="title">Wer bist du?</h1>
+      <p class="muted" style="margin:10px auto 0;max-width:290px">Wähle dein Profil. Die Auswahl bleibt auf diesem Gerät gespeichert.</p>
+    </div>
+    <div class="stack" style="margin-top:28px">${cards}</div>`;
+}
+
+function viewLoadError() {
+  return `<div class="loading"><div style="max-width:300px">
+    <div style="color:var(--accent-ink);display:inline-block">${icon('alert', 34)}</div>
+    <h2 class="h2" style="margin-top:12px">Daten konnten nicht geladen werden</h2>
+    <p class="muted small">${esc(S.loadError)}</p>
+    <button class="btn btn-primary" data-act="reload" style="margin-top:12px">Erneut versuchen</button>
+  </div></div>`;
+}
+
+/* =====================================================================
+   Screen 2: Onboarding
+   ===================================================================== */
+
+const OB_STEPS = ['Hauttyp', 'Ziele', 'Baukasten', 'Zeitpunkt', 'Produkte', 'Zusammenfassung'];
+
+function startOnboarding(step = 0) {
+  const p = me();
+  const routine = routineOf(p.id);
+  const draft = {};
+  STEPS.forEach(s => { draft[s.key] = { on: false, morning: false, evening: false, freq: 'daily', productId: '' }; });
+  routine.forEach(r => {
+    const d = draft[r.stepKey];
+    d.on = true; d[r.timeOfDay] = true; d.freq = r.frequency || 'daily';
+    if (r.productId) d.productId = r.productId;
+  });
+  S.ob = { step, edit: !!p.onboarded, skinType: p.skinType || '', goals: [...(p.goals || [])], draft, custom: routine.length > 0, saving: false };
+}
+
+function suggestKeys(skin, goals) {
+  const k = new Set(['cleanser_water', 'toner', 'moisturizer', 'sunscreen']);
+  const add = (...a) => a.forEach(x => k.add(x));
+  ({ dry: () => add('cleanser_oil', 'essence'), oily: () => add('cleanser_oil', 'exfoliant'),
+     combination: () => add('cleanser_oil', 'essence'), sensitive: () => add('essence') }[skin] || (() => {}))();
+  goals.forEach(g => ({ hydration: () => add('essence', 'sheet_mask'), blemishes: () => add('exfoliant', 'serum'),
+                        glow: () => add('essence', 'serum'), wrinkles: () => add('serum', 'eye_cream') }[g] || (() => {}))());
+  return k;
+}
+
+function applySuggestion() {
+  const ob = S.ob;
+  const keys = suggestKeys(ob.skinType, ob.goals);
+  STEPS.forEach(s => {
+    const d = ob.draft[s.key];
+    const def = STEP_DEFAULTS[s.key];
+    d.on = keys.has(s.key);
+    d.morning = def.morning; d.evening = def.evening; d.freq = def.freq;
+    // STANDARD: Bei empfindlicher Haut nur 1× pro Woche peelen.
+    if (s.key === 'exfoliant' && ob.skinType === 'sensitive') d.freq = 'days:5';
+  });
+}
+
+function obValid() {
+  const ob = S.ob;
+  switch (ob.step) {
+    case 0: return !!ob.skinType;
+    case 1: return ob.goals.length > 0;
+    case 2: return STEPS.some(s => ob.draft[s.key].on);
+    case 3: return STEPS.filter(s => ob.draft[s.key].on).every(s => {
+      const d = ob.draft[s.key];
+      return (d.morning || d.evening) && (d.freq === 'daily' || daysOf(d.freq).length > 0);
+    });
+    default: return true;
+  }
+}
+
+function viewOnboarding() {
+  const ob = S.ob;
+  const body = [obSkin, obGoals, obBuilder, obTiming, obProducts, obSummary][ob.step]();
+  const last = ob.step === OB_STEPS.length - 1;
+  const backBtn = ob.step > 0 || ob.edit
+    ? `<button class="btn btn-ghost" data-act="obBack" style="flex:none;padding:0 20px">${ob.step > 0 ? 'Zurück' : 'Abbrechen'}</button>` : '';
+  return `<div class="ob-progress" aria-label="Schritt ${ob.step + 1} von ${OB_STEPS.length}">${OB_STEPS.map((_, i) => `<i class="${i <= ob.step ? 'on' : ''}"></i>`).join('')}</div>
+    <div class="eyebrow">Schritt ${ob.step + 1} von ${OB_STEPS.length} · ${OB_STEPS[ob.step]}</div>
+    ${body}
+    <div class="footer-bar"><div class="inner">
+      ${backBtn}
+      <button class="btn btn-primary" style="flex:1" data-act="${last ? 'obFinish' : 'obNext'}" ${obValid() && !ob.saving ? '' : 'disabled'}>
+        ${last ? (ob.saving ? 'Speichert …' : 'Routine speichern') : 'Weiter'}</button>
+    </div></div>`;
+}
+
+function obSkin() {
+  return `<h1 class="title">Wie ist deine Haut, ${esc(me().name)}?</h1>
+    <p class="muted">Danach richtet sich der Vorschlag für deine Routine.</p>
+    <div class="stack" style="margin-top:20px">${SKIN_TYPES.map(t => `
+      <button class="card choice ${S.ob.skinType === t.key ? 'on' : ''}" data-act="obSkin" data-key="${t.key}" aria-pressed="${S.ob.skinType === t.key}">
+        <div class="grow"><div class="h3">${t.name}</div><div class="muted small">${t.desc}</div></div>
+        <div class="radio">${icon('check', 14, 2.4)}</div>
+      </button>`).join('')}</div>`;
+}
+
+function obGoals() {
+  const n = S.ob.goals.length;
+  return `<h1 class="title">Was wünschst du dir?</h1>
+    <p class="muted">Wähle bis zu drei Ziele. <span class="tag" style="margin-left:4px">${n} / 3</span></p>
+    <div class="grid2" style="margin-top:20px">${GOALS.map(g => {
+      const on = S.ob.goals.includes(g.key);
+      return `<button class="card choice ${on ? 'on' : ''}" data-act="obGoal" data-key="${g.key}" aria-pressed="${on}" ${!on && n >= 3 ? 'disabled style="opacity:.45"' : ''}
+        style="flex-direction:column;align-items:flex-start;min-height:104px">
+        <div class="radio">${icon('check', 14, 2.4)}</div><div class="h3" style="margin-top:auto">${g.name}</div></button>`;
+    }).join('')}</div>`;
+}
+
+function obBuilder() {
+  const ob = S.ob;
+  const sug = suggestKeys(ob.skinType, ob.goals);
+  const count = STEPS.filter(s => ob.draft[s.key].on).length;
+  return `<h1 class="title">Dein Routine-Baukasten</h1>
+    <p class="muted">Wir haben ${sug.size} Schritte vorgeschlagen. Tippe, um Schritte hinzuzufügen oder zu entfernen.</p>
+    <div class="row" style="justify-content:space-between;margin:14px 2px 4px">
+      <span class="small"><b>${count}</b> von 10 aktiv</span>
+      <button class="link" data-act="obSuggest">Vorschlag wiederherstellen</button>
+    </div>
+    <div class="stack" style="margin-top:8px">${STEPS.map((s, i) => {
+      const on = ob.draft[s.key].on;
+      return `<button class="card build ${on ? 'on' : ''}" data-act="obToggle" data-key="${s.key}" role="switch" aria-checked="${on}">
+        <div class="prod-ic">${icon(s.key)}</div>
+        <div class="grow"><div class="row" style="gap:8px"><span class="tiny muted">${i + 1}</span><span class="h3">${s.name}</span>${sug.has(s.key) ? '<span class="tag">Empfohlen</span>' : ''}</div>
+        <div class="muted small">${s.desc}</div></div>
+        <span class="toggle ${on ? 'on' : ''}"></span>
+      </button>`;
+    }).join('')}</div>`;
+}
+
+function obTiming() {
+  const ob = S.ob;
+  const active = STEPS.filter(s => ob.draft[s.key].on);
+  return `<h1 class="title">Wann und wie oft?</h1>
+    <p class="muted">Lege für jeden Schritt Tageszeit und Häufigkeit fest.</p>
+    <div class="stack" style="margin-top:18px">${active.map(s => {
+      const d = ob.draft[s.key];
+      const daily = d.freq === 'daily';
+      const days = daysOf(d.freq);
+      const invalid = !(d.morning || d.evening) || (!daily && !days.length);
+      return `<div class="card">
+        <div class="row"><div class="prod-ic">${icon(s.key)}</div><div class="grow h3">${s.name}</div></div>
+        <div class="chips" style="margin-top:14px">${TIMES.map(t => `
+          <button class="chip ${d[t.key] ? 'on' : ''}" data-act="obTime" data-key="${s.key}" data-time="${t.key}" aria-pressed="${d[t.key]}">${icon(t.icon, 16)}${t.name}</button>`).join('')}</div>
+        <div class="seg" style="margin-top:12px">
+          <button class="${daily ? 'on' : ''}" data-act="obFreq" data-key="${s.key}" data-mode="daily">Täglich</button>
+          <button class="${daily ? '' : 'on'}" data-act="obFreq" data-key="${s.key}" data-mode="days">Bestimmte Tage</button>
+        </div>
+        ${daily ? '' : `<div class="chips" style="margin-top:12px;gap:6px">${WEEKDAYS.map(([wd, l]) => `
+          <button class="chip round ${days.includes(wd) ? 'on' : ''}" data-act="obDay" data-key="${s.key}" data-day="${wd}" aria-pressed="${days.includes(wd)}">${l}</button>`).join('')}</div>`}
+        ${invalid ? `<div class="small" style="color:#8E3B22;margin-top:10px">Bitte ${!(d.morning || d.evening) ? 'eine Tageszeit' : 'mindestens einen Tag'} wählen.</div>` : ''}
+      </div>`;
+    }).join('')}</div>`;
+}
+
+function obProducts() {
+  const ob = S.ob;
+  const prods = visibleProducts(S.me);
+  const active = STEPS.filter(s => ob.draft[s.key].on);
+  const list = active.map(s => {
+    const d = ob.draft[s.key];
+    const match = prods.filter(p => p.stepKey === s.key);
+    const other = prods.filter(p => p.stepKey !== s.key);
+    const opt = p => `<option value="${esc(p.id)}" ${d.productId === p.id ? 'selected' : ''}>${esc(p.name)}${p.brand ? ' · ' + esc(p.brand) : ''}</option>`;
+    return `<div class="card">
+      <div class="row"><div class="prod-ic">${icon(s.key)}</div><div class="grow h3">${s.name}</div></div>
+      <label class="field" style="margin-top:12px">
+        <select class="input" data-chg="obProduct" data-key="${s.key}" aria-label="Produkt für ${s.name}">
+          <option value="">Kein Produkt</option>
+          ${match.length ? `<optgroup label="Passend">${match.map(opt).join('')}</optgroup>` : ''}
+          ${other.length ? `<optgroup label="Weitere Produkte">${other.map(opt).join('')}</optgroup>` : ''}
+        </select></label>
+    </div>`;
+  }).join('');
+  return `<h1 class="title">Produkte zuordnen</h1>
+    <p class="muted">Optional. ${prods.length ? 'Die Zuordnung kannst du später jederzeit ändern.' : 'Dein Regal ist noch leer – Produkte kannst du später im Regal anlegen und dann zuordnen.'}</p>
+    <div class="stack" style="margin-top:18px">${list}</div>`;
+}
+
+function obSummary() {
+  const ob = S.ob;
+  const skin = SKIN_TYPES.find(t => t.key === ob.skinType);
+  const col = time => {
+    const items = STEPS.filter(s => ob.draft[s.key].on && ob.draft[s.key][time]);
+    if (!items.length) return '<div class="muted small">Keine Schritte</div>';
+    return items.map((s, i) => {
+      const d = ob.draft[s.key]; const p = d.productId && productById(d.productId);
+      return `<div class="row" style="padding:8px 0;align-items:flex-start">
+        <span class="step-num" style="font-size:18px">${i + 1}</span>
+        <div class="grow"><div class="h3">${s.name}</div><div class="muted tiny">${freqLabel(d.freq)}${p ? ' · ' + esc(p.name) : ''}</div></div></div>`;
+    }).join('');
+  };
+  return `<h1 class="title">Deine Routine</h1>
+    <p class="muted">Alles im Blick. Du kannst die Routine später im Profil anpassen.</p>
+    <div class="card" style="margin-top:18px">
+      <div class="kv"><span>Hauttyp</span><span>${skin ? skin.name : '–'}</span></div>
+      <div class="kv"><span>Ziele</span><span>${ob.goals.map(g => GOALS.find(x => x.key === g).name).join(', ')}</span></div>
+    </div>
+    ${TIMES.map(t => `<div class="card"><div class="row" style="margin-bottom:6px"><div class="tod-ic">${icon(t.icon, 20)}</div><div class="h2">${t.name}</div></div>${col(t.key)}</div>`).join('')}`;
+}
+
+/* =====================================================================
+   Screen 3: Heute (Homescreen)
+   ===================================================================== */
+
+function viewHome() {
+  const p = me();
+  const now = new Date();
+  const t = today();
+  const hour = now.getHours();
+  const greet = hour < 11 ? 'Guten Morgen' : hour < 18 ? 'Hallo' : 'Guten Abend';
+  const dp = dayProgress(p.id, t);
+  const prods = visibleProducts(p.id);
+  const low = prods.filter(isLow);
+  const expiring = prods.filter(expiringSoon).sort((a, b) => expiry(a).days - expiry(b).days);
+
+  const lowBanners = low.map(x => `<button class="banner" data-act="openProduct" data-id="${esc(x.id)}">
+      ${icon('alert', 20)}<div class="grow small"><b>${esc(x.name)}</b> ist fast leer (${Math.round(x.remainingPercent)} %). Zeit für Nachschub.</div></button>`).join('');
+  const expBanner = expiring.length ? `<button class="banner" style="background:var(--accent-soft)" data-act="tab" data-to="shelf">
+      ${icon('bell', 20)}<div class="grow small"><b>${expiring.length === 1 ? '1 Produkt läuft' : expiring.length + ' Produkte laufen'} bald ab:</b>
+      ${expiring.slice(0, 3).map(x => `${esc(x.name)} (${restLabel(x)})`).join(', ')}${expiring.length > 3 ? ' …' : ''}</div></button>` : '';
+
+  const remaining = dp.total - dp.done;
+  const headline = !dp.total ? 'Heute ist nichts geplant' : remaining === 0 ? 'Alles geschafft für heute' : `Noch ${plural(remaining, 'Schritt', 'Schritte')}`;
+
+  const todCard = time => {
+    const pr = time.key === 'morning' ? dp.m : dp.e;
+    const complete = pr.total > 0 && pr.done >= pr.total;
+    return `<button class="card tod ${complete ? 'complete' : ''}" data-act="openRoutine" data-time="${time.key}">
+      <div class="row" style="justify-content:space-between;width:100%"><div class="tod-ic">${icon(complete ? 'check' : time.icon, 20)}</div>${icon('chevR', 18)}</div>
+      <div><div class="h2" style="font-size:22px">${time.name}</div><div class="muted small">${pr.total ? `${pr.done} von ${pr.total} erledigt` : 'Nichts geplant'}</div></div>
+      ${bar(pr.done, pr.total)}
+    </button>`;
+  };
+
+  return `<header class="row" style="align-items:flex-start">
+      <div class="grow"><div class="eyebrow">${fmtDate(now, { weekday: 'long', day: 'numeric', month: 'long' })}</div>
+      <h1 class="title">${greet},<br>${esc(p.name)}</h1></div>
+      <button data-act="tab" data-to="profile" aria-label="Profil">${avatar(p.id, true)}</button>
+    </header>
+    ${lowBanners}${expBanner}
+    <div class="card row" style="margin-top:20px;gap:20px;padding:20px">
+      ${ring(dp.done, dp.total)}
+      <div class="grow"><div class="eyebrow" style="color:var(--cocoa-2)">Heutige Routine</div>
+        <div class="h2" style="margin-top:4px">${headline}</div>
+        <div class="muted small" style="margin-top:4px">${dp.total ? Math.round(dp.done / dp.total * 100) + ' % erledigt' : 'Genieß den freien Tag.'}</div></div>
+    </div>
+    <div class="grid2" style="margin-top:12px">${TIMES.map(todCard).join('')}</div>
+    <div class="section-head"><h2 class="h2">Gemeinsam heute</h2></div>
+    ${sharedOverview()}
+    <div class="section-head"><h2 class="h2">Hautgefühl</h2><button class="link" data-act="skinSheet" data-date="${ymd(t)}">Eintragen</button></div>
+    ${skinChart(p.id)}
+    <div class="section-head"><h2 class="h2">Im Regal</h2><button class="link" data-act="tab" data-to="shelf">Alle</button></div>
+    ${shelfRow(prods)}`;
+}
+
+function sharedOverview() {
+  const t = today();
+  return `<div class="card">${PROFILES.map((x, i) => {
+    const prof = S.data.profiles.find(p => p.id === x.id);
+    const dp = dayProgress(x.id, t);
+    let status, tag = '';
+    if (!prof || !prof.onboarded) status = 'Noch nicht eingerichtet';
+    else if (!dp.total) status = 'Heute nichts geplant';
+    else if (dp.done >= dp.total) { status = 'Komplette Routine erledigt'; tag = '<span class="tag sage">Geschafft</span>'; }
+    else status = `${dp.done} von ${dp.total} Schritten · morgens ${dp.m.done}/${dp.m.total}, abends ${dp.e.done}/${dp.e.total}`;
+    return `${i ? '<div class="divider"></div>' : ''}<div class="row">
+      ${avatar(x.id, true)}
+      <div class="grow"><div class="row" style="gap:8px"><span class="h3">${esc(profileName(x.id))}${x.id === S.me ? ' <span class="muted tiny">(du)</span>' : ''}</span>${tag}</div>
+      <div class="muted tiny">${status}</div></div>
+      ${ring(dp.done, dp.total, 40, 5, false)}
+    </div>`;
+  }).join('')}</div>`;
+}
+
+function skinChart(pid) {
+  const t = today();
+  const days = Array.from({ length: 7 }, (_, i) => addDays(t, i - 6));
+  const map = new Map(S.data.skinLog.filter(s => s.profileId === pid).map(s => [s.date, s]));
+  const entries = days.map(d => map.get(ymd(d))).filter(Boolean);
+  const avg = entries.length ? (entries.reduce((a, s) => a + Number(s.rating), 0) / entries.length) : 0;
+  const cols = days.map(d => {
+    const e = map.get(ymd(d));
+    const isToday = ymd(d) === ymd(t);
+    const label = `${WD_SHORT[d.getDay()]}, ${fmtDate(d, { day: 'numeric', month: 'numeric' })}: ${e ? 'Hautwert ' + e.rating + ' von 5 (' + RATINGS[e.rating] + ')' : 'kein Eintrag'}`;
+    return `<button class="chart-col ${isToday ? 'today' : ''}" data-act="skinSheet" data-date="${ymd(d)}" aria-label="${label}" title="${label}">
+      <span class="val">${e ? e.rating : ''}</span>
+      <span class="chart-bar ${e ? '' : 'is-empty'}" style="height:${e ? Math.max(8, e.rating / 5 * 84) : 4}px"></span></button>`;
+  }).join('');
+  return `<div class="card">
+    <div class="row" style="justify-content:space-between">
+      <div><div class="small muted">Hautwert der letzten 7 Tage</div>
+      <div class="h2" style="font-size:22px">${entries.length ? `Ø ${avg.toFixed(1).replace('.', ',')} <span class="muted small" style="font-family:var(--sans)">von 5</span>` : 'Noch keine Einträge'}</div></div>
+      ${entries.length ? `<span class="tag">${plural(entries.length, 'Eintrag', 'Einträge')}</span>` : ''}
+    </div>
+    <div class="chart" role="group" aria-label="Hautwert pro Tag, 1 bis 5">${cols}</div>
+    <div class="chart-axis">${days.map(d => `<span class="${ymd(d) === ymd(t) ? 'today' : ''}">${ymd(d) === ymd(t) ? 'Heute' : WD_SHORT[d.getDay()]}</span>`).join('')}</div>
+  </div>`;
+}
+
+function shelfRow(prods) {
+  if (!prods.length) {
+    return `<div class="card empty"><div class="small">Noch keine Produkte im Regal.</div>
+      <button class="btn btn-ghost btn-sm" style="margin-top:12px" data-act="newProduct">Produkt hinzufügen</button></div>`;
+  }
+  const sorted = [...prods].sort(shelfSort);
+  return `<div class="shelf-row">${sorted.map(p => {
+    const e = expiry(p);
+    return `<button class="card shelf-item" data-act="openProduct" data-id="${esc(p.id)}">
+      <div class="row" style="justify-content:space-between;width:100%"><div class="prod-ic">${icon(p.stepKey)}</div>${isLow(p) ? '<span class="tag warn">fast leer</span>' : ''}</div>
+      <div><div class="h3 clamp2">${esc(p.name)}</div><div class="muted tiny ellipsis">${esc(p.brand || STEP[p.stepKey].name)}</div></div>
+      <div style="width:100%"><span class="tag ${restTone(p)}">${restLabel(p)}</span>
+      ${e ? `<div class="bar" style="margin-top:10px;height:4px"><i style="width:${Math.max(0, Math.min(100, e.days / e.total * 100))}%;background:${e.days <= EXPIRY_WARN_DAYS ? '#C9714C' : 'var(--accent)'}"></i></div>` : ''}</div>
+    </button>`;
+  }).join('')}</div>`;
+}
+
+function shelfSort(a, b) {
+  const score = p => (isLow(p) ? -2000 : 0) + (expiry(p) ? expiry(p).days : 5000);
+  return score(a) - score(b);
+}
+
+/* ---------- Routine des Tages (Morgens / Abends) ---------- */
+
+function viewRoutine() {
+  const time = TIMES.find(t => t.key === S.route.params.time) || TIMES[0];
+  const t = today(); const ds = ymd(t);
+  const steps = planned(S.me, t, time.key);
+  const pr = progress(S.me, t, time.key);
+  const list = steps.map((s, i) => {
+    const done = isDone(S.me, ds, s.stepKey, time.key);
+    const p = s.productId && productById(s.productId);
+    const ct = p && Number(p.notes && p.notes.contactTime);
+    return `<div class="card step ${done ? 'done' : ''}">
+      <span class="step-num">${i + 1}</span>
+      <div class="grow">
+        <div class="h3 step-name">${STEP[s.stepKey].name}</div>
+        <div class="muted small ellipsis">${p ? esc(p.name) + (p.brand ? ' · ' + esc(p.brand) : '') : STEP[s.stepKey].desc}</div>
+        ${p && p.notes && (p.notes.amount || p.notes.method) ? `<div class="muted tiny" style="margin-top:2px">${esc([p.notes.amount, p.notes.method].filter(Boolean).join(' · '))}</div>` : ''}
+        ${ct ? `<button class="mini-btn" data-act="startTimer" data-min="${ct}" data-label="${esc(p.name)}">${icon('timer', 15)}Einwirkzeit ${ct} min</button>` : ''}
+      </div>
+      <button class="check ${done ? 'on' : ''}" data-act="toggleStep" data-step="${s.stepKey}" data-time="${time.key}" role="checkbox" aria-checked="${done}" aria-label="${STEP[s.stepKey].name} erledigt">${icon('check', 22, 2.2)}</button>
+    </div>`;
+  }).join('');
+  return `${topbar(fmtDate(t, { weekday: 'long', day: 'numeric', month: 'long' }))}
+    <div class="row" style="gap:18px;margin-bottom:20px">
+      ${ring(pr.done, pr.total, 96, 8)}
+      <div class="grow"><div class="eyebrow">${time.name}</div><h1 class="title" style="font-size:32px">${time.key === 'morning' ? 'Morgenroutine' : 'Abendroutine'}</h1></div>
+    </div>
+    ${steps.length ? `<div class="stack">${list}</div>
+      ${pr.done < pr.total ? `<button class="btn btn-ghost btn-block" style="margin-top:16px" data-act="allDone" data-time="${time.key}">${icon('check', 18, 2)}Alle als erledigt markieren</button>` : ''}`
+      : `<div class="card empty">Für heute ${time.key === 'morning' ? 'morgens' : 'abends'} ist nichts geplant.<br><button class="btn btn-ghost btn-sm" style="margin-top:14px" data-act="editRoutine">Routine anpassen</button></div>`}`;
+}
+
+/* =====================================================================
+   Screen 6: Kalender
+   ===================================================================== */
+
+function dayMark(pid, d) {
+  const dp = dayProgress(pid, d);
+  const mDone = dp.m.total > 0 && dp.m.done >= dp.m.total;
+  const eDone = dp.e.total > 0 && dp.e.done >= dp.e.total;
+  if (mDone && eDone) return { cls: 'both', html: `<span style="width:18px;height:18px;border-radius:50%;background:var(--accent);color:var(--cocoa);display:grid;place-items:center">${icon('check', 12, 2.6)}</span>` };
+  if (mDone) return { cls: 'm', html: `<span style="color:var(--accent-ink)">${icon('sun', 16, 1.8)}</span>` };
+  if (eDone) return { cls: 'e', html: `<span style="color:var(--accent-ink)">${icon('moon', 15, 1.8)}</span>` };
+  if (dp.done > 0) return { cls: 'part', html: '<span style="width:6px;height:6px;border-radius:50%;background:var(--cocoa-3)"></span>' };
+  return { cls: '', html: '' };
+}
+
+function viewCalendar() {
+  if (!S.cal) { const t = today(); S.cal = { y: t.getFullYear(), m: t.getMonth(), sel: ymd(t) }; }
+  const { y, m, sel } = S.cal;
+  const first = new Date(y, m, 1);
+  const lead = (first.getDay() + 6) % 7; // Montag zuerst
+  const n = daysInMonth(first);
+  const t = today();
+  let full = 0, partial = 0;
+  const cells = [];
+  for (let i = 0; i < lead; i++) cells.push('<div class="cal-day out"></div>');
+  for (let day = 1; day <= n; day++) {
+    const d = new Date(y, m, day);
+    const ds = ymd(d);
+    const future = d > t;
+    const mark = future ? { cls: '', html: '' } : dayMark(S.me, d);
+    if (mark.cls === 'both') full++; else if (mark.cls) partial++;
+    cells.push(`<button class="cal-day ${future ? 'future' : ''} ${ds === ymd(t) ? 'today' : ''} ${ds === sel ? 'sel' : ''}" data-act="calSel" data-date="${ds}"
+      aria-label="${fmtDate(d, { day: 'numeric', month: 'long' })}"><span>${day}</span><span class="cal-mark">${mark.html}</span></button>`);
+  }
+  const monthName = fmtDate(first, { month: 'long', year: 'numeric' });
+  return `<div class="eyebrow">Kalender</div>
+    <div class="row" style="margin-top:4px">
+      <h1 class="title grow" style="margin:0">${monthName}</h1>
+      <button class="icon-btn" data-act="calMove" data-d="-1" aria-label="Vorheriger Monat">${icon('chevL')}</button>
+      <button class="icon-btn" data-act="calMove" data-d="1" aria-label="Nächster Monat">${icon('chevR')}</button>
+    </div>
+    <div class="muted small" style="margin:6px 2px 16px">${plural(full, 'Tag', 'Tage')} komplett · ${plural(partial, 'Tag', 'Tage')} teilweise</div>
+    <div class="card" style="padding:14px 12px">
+      <div class="cal-head">${WEEKDAYS.map(([, l]) => `<span>${l}</span>`).join('')}</div>
+      <div class="cal-grid">${cells.join('')}</div>
+      <div class="legend">
+        <span><span style="width:14px;height:14px;border-radius:50%;background:var(--accent);display:inline-block"></span>Morgen + Abend</span>
+        <span style="color:var(--accent-ink)">${icon('sun', 14, 1.8)}<span style="color:var(--cocoa-2)">nur Morgen</span></span>
+        <span style="color:var(--accent-ink)">${icon('moon', 14, 1.8)}<span style="color:var(--cocoa-2)">nur Abend</span></span>
+        <span><span style="width:6px;height:6px;border-radius:50%;background:var(--cocoa-3);display:inline-block"></span>angefangen</span>
+      </div>
+    </div>
+    ${calDetail(sel)}`;
+}
+
+function calDetail(ds) {
+  const d = parseYmd(ds);
+  const skin = S.data.skinLog.find(s => s.profileId === S.me && s.date === ds);
+  const future = d > today();
+  const col = time => {
+    const steps = planned(S.me, d, time.key);
+    if (!steps.length) return `<div class="muted small">Nichts geplant</div>`;
+    return steps.map(s => {
+      const done = isDone(S.me, ds, s.stepKey, time.key);
+      return `<div class="row" style="padding:5px 0;gap:10px"><span style="color:${done ? 'var(--sage-ink)' : 'var(--line)'}">${icon(done ? 'check' : 'close', 16, 2.2)}</span>
+        <span class="small ${done ? '' : 'muted'}">${STEP[s.stepKey].name}</span></div>`;
+    }).join('');
+  };
+  return `<div class="section-head"><h2 class="h2">${fmtDate(d, { weekday: 'long', day: 'numeric', month: 'long' })}</h2></div>
+    <div class="grid2">${TIMES.map(t => {
+      const pr = progress(S.me, d, t.key);
+      return `<div class="card"><div class="row" style="gap:8px;margin-bottom:8px"><span style="color:var(--accent-ink)">${icon(t.icon, 18)}</span><span class="h3">${t.name}</span>
+        <span class="muted tiny" style="margin-left:auto">${pr.done}/${pr.total}</span></div>${col(t)}</div>`;
+    }).join('')}</div>
+    <div class="card" style="margin-top:12px">
+      <div class="row"><div class="grow"><div class="h3">Hautgefühl</div>
+      <div class="muted small">${skin ? `${skin.rating} von 5 · ${RATINGS[skin.rating]}${skin.text ? ' – ' + esc(skin.text) : ''}` : 'Kein Eintrag'}</div></div>
+      ${future ? '' : `<button class="btn btn-ghost btn-sm" data-act="skinSheet" data-date="${ds}">${skin ? 'Ändern' : 'Eintragen'}</button>`}</div>
+    </div>`;
+}
+
+/* =====================================================================
+   Screen 5: Regal
+   ===================================================================== */
+
+function viewShelf() {
+  const all = visibleProducts(S.me);
+  const f = S.shelfFilter;
+  const list = all.filter(p => f === 'all' || (f === 'shared' ? p.sharedWith.length > 1 : p.sharedWith.length === 1)).sort(shelfSort);
+  const low = all.filter(isLow).length, exp = all.filter(expiringSoon).length;
+  return `<div class="row" style="align-items:flex-end">
+      <div class="grow"><div class="eyebrow">Regal</div><h1 class="title">Deine Produkte</h1></div>
+      <button class="btn btn-primary btn-sm" data-act="newProduct">${icon('plus', 18, 2)}Neu</button>
+    </div>
+    <div class="muted small" style="margin:8px 2px 16px">${plural(all.length, 'Produkt', 'Produkte')}${low ? ` · ${low} fast leer` : ''}${exp ? ` · ${exp} läuft bald ab` : ''}</div>
+    <div class="seg" role="tablist">
+      ${[['all', 'Alle'], ['shared', 'Gemeinsam'], ['private', 'Privat']].map(([k, l]) =>
+        `<button class="${f === k ? 'on' : ''}" data-act="shelfFilter" data-f="${k}" role="tab" aria-selected="${f === k}">${l}</button>`).join('')}
+    </div>
+    <div class="stack" style="margin-top:16px">${list.length ? list.map(productCard).join('')
+      : `<div class="card empty">Hier ist noch nichts.<br><button class="btn btn-ghost btn-sm" style="margin-top:14px" data-act="newProduct">Produkt hinzufügen</button></div>`}</div>`;
+}
+
+function productCard(p) {
+  const e = expiry(p);
+  const shared = p.sharedWith.length > 1;
+  return `<button class="card" style="display:block;width:100%;text-align:left" data-act="openProduct" data-id="${esc(p.id)}">
+    <div class="row" style="align-items:flex-start">
+      <div class="prod-ic">${icon(p.stepKey)}</div>
+      <div class="grow">
+        <div class="h3">${esc(p.name)}</div>
+        <div class="muted small ellipsis">${esc([p.brand, STEP[p.stepKey].name].filter(Boolean).join(' · '))}</div>
+      </div>
+      <span class="tag ${restTone(p)}">${restLabel(p)}</span>
+    </div>
+    <div class="row" style="margin-top:14px;gap:10px">
+      <div class="grow">${`<div class="bar ${isLow(p) ? '' : ''}"><i style="width:${p.remainingPercent}%;background:${isLow(p) ? '#C9714C' : 'var(--accent)'}"></i></div>`}</div>
+      <span class="tiny" style="font-weight:700;min-width:36px;text-align:right">${Math.round(p.remainingPercent)} %</span>
+    </div>
+    <div class="row" style="margin-top:10px;gap:6px;flex-wrap:wrap">
+      ${isLow(p) ? '<span class="tag warn">fast leer</span>' : ''}
+      <span class="tag ${shared ? 'sage' : 'rose'}">${shared ? 'Gemeinsam' : 'Privat · ' + esc(profileName(p.sharedWith[0]))}</span>
+      ${e ? `<span class="muted tiny">haltbar bis ${fmtDate(e.date)}</span>` : ''}
+    </div>
+  </button>`;
+}
+
+function viewProduct() {
+  const id = S.route.params.id;
+  const p = id ? productById(id) : null;
+  if (id && !p) return `${topbar('Produkt')}<div class="card empty">Produkt nicht gefunden.</div>`;
+  const n = (p && p.notes) || {};
+  const step = p ? p.stepKey : (S.route.params.stepKey || '');
+  const share = !p ? 'both' : (p.sharedWith.length > 1 ? 'both' : p.sharedWith[0]);
+  const pao = p ? p.paoMonths : 12;
+  const rem = p ? Math.round(p.remainingPercent) : 100;
+  const v = x => esc(x == null ? '' : x);
+  return `${topbar(p ? 'Produkt bearbeiten' : 'Neues Produkt')}
+    ${p ? productSummary(p) : ''}
+    <form data-submit="saveProduct" autocomplete="off" novalidate>
+      <input type="hidden" name="id" value="${v(p && p.id)}">
+      <div class="card">
+        <div class="h3">Produkt</div>
+        <label class="field"><span>Name *</span><input class="input" name="name" maxlength="120" value="${v(p && p.name)}" placeholder="z. B. Reiswasser-Toner" required></label>
+        <label class="field"><span>Marke</span><input class="input" name="brand" maxlength="120" value="${v(p && p.brand)}" placeholder="frei wählbar"></label>
+        <label class="field"><span>Kategorie (Schritt) *</span><select class="input" name="stepKey" required>
+          <option value="">Bitte wählen</option>
+          ${STEPS.map((s, i) => `<option value="${s.key}" ${step === s.key ? 'selected' : ''}>${i + 1}. ${s.name}</option>`).join('')}
+        </select></label>
+      </div>
+      <div class="card">
+        <div class="h3">Haltbarkeit & Füllstand</div>
+        <label class="field"><span>Geöffnet am</span><input class="input" type="date" name="openedAt" value="${v(p ? p.openedAt : todayStr())}" max="${todayStr()}"></label>
+        <div class="field"><span>Haltbar nach dem Öffnen (PAO)</span>
+          <div class="chips">${[6, 12, 24].map(m => `<label class="chip ${pao === m ? 'on' : ''}"><input type="radio" name="paoMonths" value="${m}" ${pao === m ? 'checked' : ''}>${m} Monate</label>`).join('')}</div></div>
+        <div class="field"><span>Noch übrig: <b id="remVal">${rem} %</b></span>
+          <input type="range" name="remainingPercent" min="0" max="100" step="5" value="${rem}" data-live="#remVal" aria-label="Füllstand in Prozent"></div>
+      </div>
+      <div class="card">
+        <div class="h3">Wer nutzt es?</div>
+        <div class="seg" style="margin-top:12px">
+          <label class="${share === 'both' ? 'on' : ''}"><input type="radio" name="share" value="both" ${share === 'both' ? 'checked' : ''}>Gemeinsam</label>
+          ${PROFILES.map(x => `<label class="${share === x.id ? 'on' : ''}"><input type="radio" name="share" value="${x.id}" ${share === x.id ? 'checked' : ''}>Nur ${esc(profileName(x.id))}</label>`).join('')}
+        </div>
+        <div class="muted tiny" style="margin:8px 4px 0">Private Produkte sieht nur die zugeordnete Person.</div>
+      </div>
+      <div class="card">
+        <div class="h3">Anwendung</div>
+        <label class="field"><span>Menge</span><input class="input" name="amount" maxlength="200" value="${v(n.amount)}" placeholder="z. B. 2–3 Tropfen, erbsengroß"></label>
+        <label class="field"><span>Reihenfolge</span><input class="input" name="order" maxlength="200" value="${v(n.order)}" placeholder="z. B. nach dem Toner"></label>
+        <label class="field"><span>Methode</span><input class="input" name="method" maxlength="200" value="${v(n.method)}" placeholder="z. B. sanft einklopfen"></label>
+        <label class="field"><span>Hinweise zur Anwendung</span><textarea class="input" name="application" maxlength="1000" placeholder="Freitext">${v(n.application)}</textarea></label>
+      </div>
+      <div class="card">
+        <div class="h3">Einwirkzeit & Nutzungsdauer</div>
+        <label class="field"><span>Einwirkzeit in Minuten (startet den Timer)</span><input class="input" type="number" inputmode="numeric" min="0" max="120" name="contactTime" value="${n.contactTime ? v(n.contactTime) : ''}" placeholder="z. B. 15"></label>
+        <label class="field"><span>Nutzungsdauer</span><input class="input" name="usageDuration" maxlength="200" value="${v(n.usageDuration)}" placeholder="z. B. 4 Wochen täglich"></label>
+        <label class="field"><span>Kurende (optional)</span><input class="input" type="date" name="usageEnd" value="${v(n.usageEnd)}"></label>
+      </div>
+      <div class="card">
+        <div class="h3">Notizen</div>
+        <label class="field"><span>Freitext</span><textarea class="input" name="freeText" maxlength="2000" placeholder="Wie verträgt deine Haut das Produkt?">${v(n.freeText)}</textarea></label>
+      </div>
+      <button class="btn btn-primary btn-block" type="submit" style="margin-top:20px">Speichern</button>
+      ${p ? `<button class="btn btn-danger btn-block" type="button" style="margin-top:10px" data-act="deleteProduct" data-id="${v(p.id)}">${icon('trash', 18)}Produkt löschen</button>` : ''}
+    </form>`;
+}
+
+function productSummary(p) {
+  const e = expiry(p);
+  const n = p.notes || {};
+  const ct = Number(n.contactTime);
+  const kur = n.usageEnd ? parseYmd(n.usageEnd) : null;
+  return `<div class="card soft" style="margin-bottom:12px">
+    <div class="row"><div class="prod-ic" style="background:#fff">${icon(p.stepKey)}</div>
+      <div class="grow"><div class="h2" style="font-size:22px">${esc(p.name)}</div><div class="muted small">${esc(p.brand || STEP[p.stepKey].name)}</div></div></div>
+    <div class="chips" style="margin-top:14px;gap:6px">
+      <span class="tag ${restTone(p)}" style="background:#fff">${restLabel(p)}</span>
+      ${isLow(p) ? '<span class="tag warn">fast leer</span>' : ''}
+      ${e ? `<span class="tag" style="background:#fff;color:var(--cocoa-2)">haltbar bis ${fmtDate(e.date)}</span>` : ''}
+      ${kur ? `<span class="tag" style="background:#fff;color:var(--cocoa-2)">Kur bis ${fmtDate(kur)}${diffDays(today(), kur) < 0 ? ' (beendet)' : ''}</span>` : ''}
+    </div>
+    ${ct ? `<button class="btn btn-primary btn-sm" style="margin-top:14px" data-act="startTimer" data-min="${ct}" data-label="${esc(p.name)}">${icon('timer', 18)}Timer · ${ct} min</button>` : ''}
+  </div>`;
+}
+
+/* =====================================================================
+   Profil
+   ===================================================================== */
+
+function viewProfile() {
+  const p = me();
+  const skin = SKIN_TYPES.find(t => t.key === p.skinType);
+  const routine = routineOf(p.id);
+  const list = time => routine.filter(r => r.timeOfDay === time).sort(byStep)
+    .map(r => `<div style="padding:6px 0"><div class="small" style="font-weight:600">${STEP[r.stepKey].name}</div><div class="muted tiny">${freqLabel(r.frequency)}</div></div>`).join('') || '<div class="muted small">Keine Schritte</div>';
+  // Wochenbilanz: komplett erledigte Tage der letzten 7 Tage
+  const week = Array.from({ length: 7 }, (_, i) => dayProgress(p.id, addDays(today(), -i))).filter(d => d.total && d.done >= d.total).length;
+  return `<div style="text-align:center;padding-top:12px">
+      ${avatar(p.id).replace('class="avatar', 'style="margin:0 auto" class="avatar')}
+      <h1 class="title" style="margin-top:12px">${esc(p.name)}</h1>
+      <div class="chips" style="justify-content:center;margin-top:10px;gap:6px">
+        ${skin ? `<span class="tag">${skin.name}</span>` : ''}
+        ${(p.goals || []).map(g => `<span class="tag rose">${GOALS.find(x => x.key === g).name}</span>`).join('')}
+      </div>
+      <div class="muted small" style="margin-top:10px">${plural(week, 'Tag', 'Tage')} komplett in den letzten 7 Tagen</div>
+    </div>
+    <div class="section-head"><h2 class="h2">Meine Routine</h2><button class="link" data-act="editRoutine">Anpassen</button></div>
+    <div class="grid2">${TIMES.map(t => `<div class="card"><div class="row" style="gap:8px;margin-bottom:6px"><span style="color:var(--accent-ink)">${icon(t.icon, 18)}</span><span class="h3">${t.name}</span></div>${list(t.key)}</div>`).join('')}</div>
+    <div class="section-head"><h2 class="h2">Gemeinsame Übersicht</h2></div>
+    ${sharedOverview()}
+    <div class="section-head"><h2 class="h2">Einstellungen</h2></div>
+    <div class="card" style="padding:4px 0">
+      <button class="menu-item" data-act="editSkin">${icon('edit', 20)}<span class="grow">Hauttyp & Ziele ändern</span>${icon('chevR', 18)}</button>
+      <div class="divider" style="margin:0 16px"></div>
+      <button class="menu-item" data-act="reload">${icon('refresh', 20)}<span class="grow">Daten aktualisieren</span>${icon('chevR', 18)}</button>
+      <div class="divider" style="margin:0 16px"></div>
+      <button class="menu-item" data-act="switchProfile">${icon('swap', 20)}<span class="grow">Profil wechseln</span>${icon('chevR', 18)}</button>
+    </div>`;
+}
+
+/* =====================================================================
+   Bottom-Sheets
+   ===================================================================== */
+
+function openSheet(name, html) {
+  S.sheet = name;
+  const el = $('#sheet');
+  el.innerHTML = `<div class="backdrop" data-act="closeSheet"></div><div class="sheet-body"><div class="grabber"></div>${html}</div>`;
+  el.classList.add('open');
+}
+function closeSheet() {
+  S.sheet = null;
+  const el = $('#sheet');
+  el.classList.remove('open');
+  el.innerHTML = '';
+}
+
+function sheetQuickAdd() {
+  const hour = new Date().getHours();
+  const time = hour < 14 ? 'morning' : 'evening';
+  const item = (act, ic, title, sub, extra = '') => `<button class="card menu-item" data-act="${act}" ${extra}>
+    <div class="tod-ic">${icon(ic, 20)}</div><div class="grow"><div class="h3">${title}</div><div class="muted small">${sub}</div></div>${icon('chevR', 18)}</button>`;
+  openSheet('quick', `<h2 class="h2" style="margin-bottom:14px">Hinzufügen</h2><div class="stack">
+    ${item('openRoutine', time === 'morning' ? 'sun' : 'moon', time === 'morning' ? 'Morgenroutine abhaken' : 'Abendroutine abhaken', 'Schritte von heute', `data-time="${time}"`)}
+    ${item('skinSheet', 'heart', 'Hautgefühl eintragen', 'Wert von 1 bis 5 und Notiz', `data-date="${todayStr()}"`)}
+    ${item('newProduct', 'shelf', 'Produkt hinzufügen', 'Neues Produkt ins Regal')}
+    ${item('openTimer', 'timer', 'Timer stellen', 'Für Masken und Einwirkzeiten')}
+  </div>`);
+}
+
+function sheetSkin(ds) {
+  const entry = S.data.skinLog.find(s => s.profileId === S.me && s.date === ds) || {};
+  const d = parseYmd(ds);
+  openSheet('skin', `<form data-submit="saveSkin">
+    <input type="hidden" name="date" value="${esc(ds)}">
+    <div class="eyebrow">${ds === todayStr() ? 'Heute' : fmtDate(d, { weekday: 'long', day: 'numeric', month: 'long' })}</div>
+    <h2 class="h2" style="margin-top:4px">Wie fühlt sich deine Haut an?</h2>
+    <div class="chips" style="margin-top:16px;gap:6px">${[1, 2, 3, 4, 5].map(r => `
+      <label class="chip ${Number(entry.rating) === r ? 'on' : ''}" style="flex:1;flex-direction:column;gap:2px;padding:10px 4px;justify-content:center;border-radius:18px">
+        <input type="radio" name="rating" value="${r}" ${Number(entry.rating) === r ? 'checked' : ''}>
+        <span style="font-family:var(--serif);font-size:24px;line-height:1">${r}</span><span class="tiny">${RATINGS[r]}</span></label>`).join('')}</div>
+    <label class="field"><span>Notiz (optional)</span><textarea class="input" name="text" maxlength="1000" placeholder="z. B. Wangen etwas trocken, kleine Rötung am Kinn">${esc(entry.text || '')}</textarea></label>
+    <button class="btn btn-primary btn-block" type="submit" style="margin-top:18px">Speichern</button>
+  </form>`);
+}
+
+/* =====================================================================
+   Screen 4: Timer
+   ===================================================================== */
+
+const Timer = {
+  dur: 60000, rem: 60000, endAt: 0, running: false, label: '', ringing: false,
+  ctx: null, ringLoop: null, ringCount: 0,
+
+  load() {
+    const t = LS.get('hr.timer');
+    if (t) Object.assign(this, { dur: t.dur || 60000, rem: t.rem, endAt: t.endAt || 0, running: !!t.running, label: t.label || '' });
+    if (this.rem == null) this.rem = this.dur;
+  },
+  save() { LS.set('hr.timer', { dur: this.dur, rem: this.rem, endAt: this.endAt, running: this.running, label: this.label }); },
+  left() { return this.running ? Math.max(0, this.endAt - Date.now()) : this.rem; },
+
+  // iOS spielt Web-Audio nur nach einer Nutzergeste ab: Kontext beim ersten Tippen entsperren.
+  unlock() {
+    try {
+      if (!this.ctx) {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (!AC) return;
+        this.ctx = new AC();
+        const b = this.ctx.createBuffer(1, 1, 22050), src = this.ctx.createBufferSource();
+        src.buffer = b; src.connect(this.ctx.destination); src.start(0);
+      }
+      if (this.ctx.state === 'suspended') this.ctx.resume();
+    } catch (e) { /* kein Audio verfügbar */ }
+  },
+
+  set(ms, label = '') { this.running = false; this.dur = ms; this.rem = ms; this.label = label; this.save(); this.update(true); },
+  start() {
+    this.unlock();
+    if (this.rem <= 0) this.rem = this.dur;
+    this.endAt = Date.now() + this.rem; this.running = true;
+    this.save(); this.update(true);
+  },
+  pause() { this.rem = this.left(); this.running = false; this.save(); this.update(true); },
+  reset() { this.running = false; this.rem = this.dur; this.save(); this.update(true); },
+  adjust(ms) {
+    if (this.running) { this.endAt = Math.max(Date.now() + 1000, this.endAt + ms); this.dur = Math.max(this.dur, this.left()); }
+    else if (this.state() === 'idle') { this.rem = this.dur = Math.max(1000, this.rem + ms); }
+    else { this.rem = Math.max(1000, this.rem + ms); this.dur = Math.max(this.dur, this.rem); }
+    this.save(); this.update(true);
+  },
+
+  tick() {
+    if (!this.running) return;
+    if (this.left() <= 0) this.finish(); else this.update(false);
+  },
+
+  finish() {
+    this.running = false; this.rem = 0; this.ringing = true; this.save();
+    this.update(true);
+    $('#alarm').innerHTML = `${icon('bell', 56, 1.4)}
+      <div class="big">Zeit ist um</div>
+      <div style="font-size:17px;font-weight:600">${this.label ? esc(this.label) : fmtMs(this.dur) + ' sind vorbei'}</div>
+      <button class="btn btn-primary" style="margin-top:34px;min-width:200px" data-act="alarmOk">Okay</button>`;
+    $('#alarm').classList.add('open');
+    this.ringCount = 0;
+    this.chime();
+    clearInterval(this.ringLoop);
+    // STANDARD: Signalton wiederholt sich 1 Minute lang (alle 2,5 s), bis „Okay“ getippt wird.
+    this.ringLoop = setInterval(() => { if (++this.ringCount >= 24) clearInterval(this.ringLoop); else this.chime(); }, 2500);
+  },
+  dismiss() {
+    clearInterval(this.ringLoop);
+    this.ringing = false; this.rem = this.dur; this.save();
+    $('#alarm').classList.remove('open');
+    this.update(true);
+  },
+  chime() {
+    const c = this.ctx;
+    if (!c) return;
+    try {
+      if (c.state === 'suspended') c.resume();
+      const t0 = c.currentTime + 0.02;
+      [[880, 0], [1108.7, 0.18], [1318.5, 0.36]].forEach(([f, d]) => {
+        const o = c.createOscillator(), g = c.createGain();
+        o.type = 'sine'; o.frequency.value = f;
+        g.gain.setValueAtTime(0.0001, t0 + d);
+        g.gain.exponentialRampToValueAtTime(0.4, t0 + d + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, t0 + d + 1.1);
+        o.connect(g); g.connect(c.destination);
+        o.start(t0 + d); o.stop(t0 + d + 1.2);
+      });
+    } catch (e) { /* ignorieren */ }
+  },
+
+  state() { return this.running ? 'running' : (this.rem > 0 && this.rem < this.dur ? 'paused' : 'idle'); },
+
+  renderFab() {
+    const fab = $('#timerFab');
+    const st = this.state();
+    fab.className = st;
+    fab.innerHTML = st === 'idle' ? icon('timer', 26, 1.7) : `${icon(st === 'running' ? 'timer' : 'pause', 20, 1.8)}<span>${fmtMs(this.left())}</span>`;
+    fab.setAttribute('aria-label', st === 'idle' ? 'Timer öffnen' : `Timer ${st === 'running' ? 'läuft' : 'pausiert'}, noch ${fmtMs(this.left())}`);
+  },
+
+  // full = Bedienelemente neu zeichnen; sonst nur die Zeit aktualisieren
+  update(full) {
+    this.renderFab();
+    if (S.sheet !== 'timer') return;
+    const disp = $('#tDisplay');
+    if (disp) disp.textContent = fmtMs(this.left());
+    if (full) $('#tControls').innerHTML = this.controls();
+  },
+
+  controls() {
+    const st = this.state();
+    const quick = [[30000, '30 s'], [60000, '1 min'], [300000, '5 min'], [600000, '10 min']];
+    return `<div class="chips" style="justify-content:center;gap:8px">${quick.map(([ms, l]) =>
+        `<button class="chip ${this.dur === ms && !this.label ? 'on' : ''}" data-act="timerQuick" data-ms="${ms}">${l}</button>`).join('')}</div>
+      <div class="row" style="justify-content:center;margin-top:12px;gap:8px">
+        <button class="chip" data-act="timerAdjust" data-ms="-60000" aria-label="Eine Minute weniger">− 1 min</button>
+        <button class="chip" data-act="timerAdjust" data-ms="60000" aria-label="Eine Minute mehr">+ 1 min</button>
+      </div>
+      <div class="row" style="margin-top:22px;gap:10px">
+        <button class="btn btn-ghost" style="flex:none;width:52px;padding:0" data-act="timerReset" aria-label="Zurücksetzen">${icon('reset', 20)}</button>
+        <button class="btn ${st === 'running' ? 'btn-accent' : 'btn-primary'}" style="flex:1" data-act="${st === 'running' ? 'timerPause' : 'timerStart'}">
+          ${icon(st === 'running' ? 'pause' : 'play', 20, 1.8)}${st === 'running' ? 'Pause' : st === 'paused' ? 'Weiter' : 'Start'}</button>
+      </div>`;
+  },
+
+  open() {
+    openSheet('timer', `<div style="text-align:center">
+      <div class="eyebrow">Timer</div>
+      <div class="muted small" style="margin-top:4px;min-height:20px">${this.label ? esc(this.label) : 'Für Masken und Einwirkzeiten'}</div>
+      <div class="timer-display" id="tDisplay">${fmtMs(this.left())}</div>
+      <div class="muted tiny" style="margin-bottom:18px">Signalton ertönt, solange die App geöffnet ist. Lautlos-Schalter beachten.</div>
+    </div><div id="tControls">${this.controls()}</div>`);
+  }
+};
+
+/* =====================================================================
+   Toast
+   ===================================================================== */
+
+let toastTimer;
+function toast(msg, type = '') {
+  const el = $('#toast');
+  el.innerHTML = `<div class="toast-msg ${type}" role="${type === 'error' ? 'alert' : 'status'}">${type === 'error' ? icon('alert', 18) : icon('check', 18, 2)}<span>${esc(msg)}</span></div>`;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.innerHTML = ''; }, type === 'error' ? 6000 : 2600);
+}
+const saveError = e => toast('Speichern fehlgeschlagen: ' + errMsg(e) + ' Bitte erneut versuchen.', 'error');
+
+/* =====================================================================
+   Aktionen
+   ===================================================================== */
+
+const A = {
+  back,
+  reload: () => load(true),
+  tab: el => { S.stack = []; go(el.dataset.to, {}, { push: false }); },
+  closeSheet,
+  quickAdd: sheetQuickAdd,
+
+  pickProfile(el) { S.me = el.dataset.id; LS.set('hr.profile', S.me); S.route = { name: 'home', params: {} }; S.stack = []; S.ob = null; render(); window.scrollTo(0, 0); },
+  switchProfile() { S.me = null; LS.del('hr.profile'); S.ob = null; render(); window.scrollTo(0, 0); },
+
+  // Onboarding
+  obSkin(el) { S.ob.skinType = el.dataset.key; render(); },
+  obGoal(el) {
+    const g = S.ob.goals, k = el.dataset.key;
+    if (g.includes(k)) g.splice(g.indexOf(k), 1); else if (g.length < 3) g.push(k);
+    render();
+  },
+  obToggle(el) { const d = S.ob.draft[el.dataset.key]; d.on = !d.on; S.ob.custom = true; render(); },
+  obSuggest() { applySuggestion(); S.ob.custom = false; render(); toast('Vorschlag übernommen'); },
+  obTime(el) { const d = S.ob.draft[el.dataset.key]; d[el.dataset.time] = !d[el.dataset.time]; render(); },
+  obFreq(el) {
+    const d = S.ob.draft[el.dataset.key];
+    if (el.dataset.mode === 'daily') d.freq = 'daily';
+    else if (d.freq === 'daily') d.freq = 'days:1,4'; // STANDARD: Mo + Do als Startauswahl
+    render();
+  },
+  obDay(el) {
+    const d = S.ob.draft[el.dataset.key];
+    const days = new Set(daysOf(d.freq)), wd = Number(el.dataset.day);
+    days.has(wd) ? days.delete(wd) : days.add(wd);
+    d.freq = freqFrom(days);
+    render();
+  },
+  obNext() {
+    if (!obValid()) return;
+    // Vorschlag anwenden, solange der Nutzer den Baukasten noch nicht selbst angepasst hat.
+    if (S.ob.step === 1 && !S.ob.custom) applySuggestion();
+    S.ob.step++; render(); window.scrollTo(0, 0);
+  },
+  obBack() {
+    if (S.ob.step === 0) { S.ob = null; render(); return; }
+    S.ob.step--; render(); window.scrollTo(0, 0);
+  },
+  async obFinish() {
+    const ob = S.ob;
+    const steps = [];
+    STEPS.forEach(s => {
+      const d = ob.draft[s.key];
+      if (!d.on) return;
+      TIMES.forEach(t => { if (d[t.key]) steps.push({ stepKey: s.key, timeOfDay: t.key, frequency: d.freq, productId: d.productId || '' }); });
+    });
+    ob.saving = true; render();
+    try {
+      const prof = await api('saveProfile', { id: S.me, skinType: ob.skinType, goals: ob.goals, onboarded: true });
+      const rows = await api('saveRoutine', S.me, steps);
+      Object.assign(me(), prof, { onboarded: true });
+      S.data.routineSteps = S.data.routineSteps.filter(r => r.profileId !== S.me).concat(rows);
+      persist();
+      const wasEdit = ob.edit;
+      S.ob = null; S.stack = []; S.route = { name: wasEdit ? 'profile' : 'home', params: {} };
+      render(); window.scrollTo(0, 0);
+      toast(wasEdit ? 'Routine aktualisiert' : 'Deine Routine ist bereit');
+    } catch (e) {
+      ob.saving = false; render(); saveError(e);
+    }
+  },
+  editRoutine() { startOnboarding(2); render(); window.scrollTo(0, 0); },
+  editSkin() { startOnboarding(0); render(); window.scrollTo(0, 0); },
+
+  // Routine
+  openRoutine(el) { go('routine', { time: el.dataset.time }); },
+  async toggleStep(el) {
+    const entry = { profileId: S.me, date: todayStr(), stepKey: el.dataset.step, timeOfDay: el.dataset.time };
+    const before = isDone(S.me, entry.date, entry.stepKey, entry.timeOfDay);
+    entry.done = !before;
+    setLocalLog(entry); render();
+    const pr = progress(S.me, today(), entry.timeOfDay);
+    if (entry.done && pr.total && pr.done === pr.total) toast(entry.timeOfDay === 'morning' ? 'Morgenroutine geschafft' : 'Abendroutine geschafft');
+    try { await api('setLogs', [entry]); persist(); }
+    catch (e) { setLocalLog({ ...entry, done: before }); render(); saveError(e); }
+  },
+  async allDone(el) {
+    const time = el.dataset.time, ds = todayStr();
+    const open = planned(S.me, today(), time).filter(s => !isDone(S.me, ds, s.stepKey, time));
+    const entries = open.map(s => ({ profileId: S.me, date: ds, stepKey: s.stepKey, timeOfDay: time, done: true }));
+    entries.forEach(setLocalLog); render();
+    try { await api('setLogs', entries); persist(); toast(time === 'morning' ? 'Morgenroutine geschafft' : 'Abendroutine geschafft'); }
+    catch (e) { entries.forEach(x => setLocalLog({ ...x, done: false })); render(); saveError(e); }
+  },
+
+  // Kalender
+  calSel(el) { S.cal.sel = el.dataset.date; render(); },
+  calMove(el) {
+    const d = new Date(S.cal.y, S.cal.m + Number(el.dataset.d), 1);
+    S.cal.y = d.getFullYear(); S.cal.m = d.getMonth();
+    render();
+  },
+
+  // Regal
+  shelfFilter(el) { S.shelfFilter = el.dataset.f; render(); },
+  newProduct() { go('product', {}); },
+  openProduct(el) { go('product', { id: el.dataset.id }); },
+  async saveProduct(form) {
+    const f = new FormData(form);
+    const share = f.get('share');
+    const p = {
+      id: f.get('id') || '',
+      name: String(f.get('name') || '').trim(),
+      brand: String(f.get('brand') || '').trim(),
+      stepKey: f.get('stepKey'),
+      openedAt: f.get('openedAt') || '',
+      paoMonths: Number(f.get('paoMonths') || 12),
+      remainingPercent: Number(f.get('remainingPercent')),
+      sharedWith: share === 'both' ? PROFILES.map(x => x.id) : [share],
+      notes: {
+        amount: f.get('amount'), order: f.get('order'), method: f.get('method'), application: f.get('application'),
+        contactTime: Number(f.get('contactTime') || 0), usageDuration: f.get('usageDuration'), usageEnd: f.get('usageEnd') || '',
+        freeText: f.get('freeText')
+      }
+    };
+    if (!p.name) { toast('Bitte einen Produktnamen angeben.', 'error'); form.elements.name.focus(); return; }
+    if (!p.stepKey) { toast('Bitte eine Kategorie wählen.', 'error'); form.elements.stepKey.focus(); return; }
+    const btn = form.querySelector('[type=submit]');
+    btn.disabled = true; btn.textContent = 'Speichert …';
+    try {
+      const saved = await api('saveProduct', p);
+      const i = S.data.products.findIndex(x => x.id === saved.id);
+      if (i >= 0) S.data.products[i] = saved; else S.data.products.push(saved);
+      persist();
+      toast('Produkt gespeichert');
+      back();
+    } catch (e) {
+      btn.disabled = false; btn.textContent = 'Speichern'; saveError(e);
+    }
+  },
+  // Bestätigung als eigenes Sheet (confirm() ist im Apps-Script-iframe nicht zuverlässig).
+  deleteProduct(el) {
+    const p = productById(el.dataset.id);
+    if (!p) return;
+    openSheet('confirm', `<h2 class="h2">Produkt löschen?</h2>
+      <p class="muted">„${esc(p.name)}“ wird für beide Profile entfernt und aus den Routinen gelöst.</p>
+      <div class="row" style="margin-top:18px;gap:10px">
+        <button class="btn btn-ghost" style="flex:1" data-act="closeSheet">Abbrechen</button>
+        <button class="btn btn-primary" style="flex:1" data-act="confirmDelete" data-id="${esc(p.id)}">Löschen</button></div>`);
+  },
+  async confirmDelete(el) {
+    const p = productById(el.dataset.id);
+    if (!p) return;
+    el.disabled = true;
+    try {
+      await api('deleteProduct', p.id);
+      S.data.products = S.data.products.filter(x => x.id !== p.id);
+      S.data.routineSteps.forEach(r => { if (r.productId === p.id) r.productId = ''; });
+      persist();
+      closeSheet();
+      toast('Produkt gelöscht');
+      back();
+    } catch (e) { el.disabled = false; saveError(e); }
+  },
+
+  // Hautgefühl
+  skinSheet(el) { sheetSkin(el.dataset.date || todayStr()); },
+  async saveSkin(form) {
+    const f = new FormData(form);
+    const entry = { profileId: S.me, date: f.get('date'), rating: Number(f.get('rating')), text: String(f.get('text') || '').trim() };
+    if (!entry.rating) { toast('Bitte einen Wert von 1 bis 5 wählen.', 'error'); return; }
+    const btn = form.querySelector('[type=submit]');
+    btn.disabled = true; btn.textContent = 'Speichert …';
+    try {
+      const saved = await api('saveSkinLog', entry);
+      S.data.skinLog = S.data.skinLog.filter(s => !(s.profileId === S.me && s.date === saved.date)).concat([{ ...saved, rating: Number(saved.rating) }]);
+      persist(); closeSheet(); render(); toast('Hautgefühl gespeichert');
+    } catch (e) { btn.disabled = false; btn.textContent = 'Speichern'; saveError(e); }
+  },
+
+  // Timer
+  openTimer() { Timer.open(); },
+  timerQuick(el) { Timer.set(Number(el.dataset.ms)); Timer.open(); },
+  timerAdjust(el) { Timer.adjust(Number(el.dataset.ms)); },
+  timerStart() { Timer.start(); },
+  timerPause() { Timer.pause(); },
+  timerReset() { Timer.reset(); },
+  startTimer(el) {
+    Timer.set(Number(el.dataset.min) * 60000, el.dataset.label || '');
+    Timer.start();
+    toast(`Timer läuft: ${el.dataset.min} min`);
+  },
+  alarmOk() { Timer.dismiss(); }
+};
+
+// Formularänderungen
+const C = {
+  obProduct(el) { S.ob.draft[el.dataset.key].productId = el.value; }
+};
+
+/* =====================================================================
+   Ereignisse & Start
+   ===================================================================== */
+
+document.addEventListener('click', e => {
+  Timer.unlock();
+  if (e.target.closest('#timerFab')) { Timer.open(); return; }
+  const el = e.target.closest('[data-act]');
+  if (!el || el.disabled) return;
+  const fn = A[el.dataset.act];
+  if (!fn) return;
+  e.preventDefault();
+  fn(el, e);
+});
+document.addEventListener('change', e => {
+  const el = e.target.closest('[data-chg]');
+  if (el && C[el.dataset.chg]) C[el.dataset.chg](el, e);
+  // Visueller Zustand der Radio-Segmente (ohne :has()-Abhängigkeit)
+  if (e.target.type === 'radio') {
+    document.querySelectorAll(`input[name="${e.target.name}"]`).forEach(r => r.closest('label') && r.closest('label').classList.toggle('on', r.checked));
+  }
+});
+document.addEventListener('input', e => {
+  const el = e.target;
+  if (el.dataset && el.dataset.live) { const out = $(el.dataset.live); if (out) out.textContent = el.value + ' %'; }
+});
+document.addEventListener('submit', e => {
+  e.preventDefault();
+  const fn = A[e.target.dataset.submit];
+  if (fn) fn(e.target, e);
+});
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { if (Timer.ringing) Timer.dismiss(); else closeSheet(); } });
+document.addEventListener('visibilitychange', () => { if (!document.hidden) Timer.tick(); });
+setInterval(() => Timer.tick(), 250);
+
+async function load(manual) {
+  try {
+    const d = await api('getAll');
+    setData(d);
+    S.loaded = true; S.fresh = true; S.loadError = null;
+    if (manual) toast('Daten aktualisiert');
+  } catch (e) {
+    if (!S.loaded) S.loadError = errMsg(e);
+    else toast('Aktualisieren fehlgeschlagen: ' + errMsg(e), 'error');
+  }
+  // Ein offenes Onboarding nicht überschreiben
+  render();
+}
+
+function boot() {
+  Timer.load();
+  if (Timer.running && Timer.left() <= 0) Timer.finish();
+  // Sofort mit zwischengespeicherten Daten starten, dann frisch vom Server laden.
+  const cached = LS.get('hr.cache');
+  if (cached && cached.profiles && cached.profiles.length) { setData(cached); S.loaded = true; }
+  render();
+  load(false);
+}
+
+/* =====================================================================
+   Lokaler Demo-Modus
+   Nur aktiv, wenn die Seite ohne Apps Script läuft (z. B. lokale Vorschau).
+   In der Web-App ist google.script.run immer vorhanden – dann bleibt dieser Teil ungenutzt.
+   ===================================================================== */
+
+const Mock = (() => {
+  const KEY = 'hr.mock';
+  const t = today();
+  const ago = (days) => ymd(addDays(t, -days));
+  const monthsAgo = (m, plusDays = 0) => ymd(addDays(addMonths(t, -m), plusDays));
+  function seed() {
+    const both = ['bibi', 'bubu'];
+    const prod = (id, name, brand, stepKey, openedAt, paoMonths, remainingPercent, sharedWith, notes = {}) =>
+      ({ id, name, brand, stepKey, openedAt, paoMonths, remainingPercent, sharedWith, notes });
+    const d = {
+      profiles: PROFILES.map(p => ({ id: p.id, name: p.name, skinType: '', goals: [], onboarded: false })),
+      routineSteps: [],
+      products: [
+        prod('p1', 'Reinigungsöl mit Reiskleie', 'Atelier Seoul', 'cleanser_oil', monthsAgo(6, 9), 6, 45, both, { amount: '2 Pumpstöße', method: 'Auf trockener Haut einmassieren, dann emulgieren' }),
+        prod('p2', 'Sanfter Schaumreiniger', 'Mori Lab', 'cleanser_water', monthsAgo(2), 12, 65, both),
+        prod('p3', 'Pflaumenblüten-Toner', 'Atelier Seoul', 'toner', monthsAgo(1), 12, 80, both, { method: 'Mit den Händen einklopfen' }),
+        prod('p4', 'Ginseng-Essenz', 'Hanji & Co.', 'essence', monthsAgo(3), 12, 60, ['bibi']),
+        prod('p5', 'Propolis-Serum', 'Mori Lab', 'serum', monthsAgo(4), 12, 15, both, { amount: '3 Tropfen', order: 'nach der Essenz' }),
+        prod('p6', 'AHA-Peeling-Toner', 'Hanji & Co.', 'exfoliant', monthsAgo(2), 12, 70, ['bibi'], { contactTime: 10, usageDuration: '2× pro Woche abends', method: 'Mit Wattepad auftragen' }),
+        prod('p7', 'Tuchmaske Grüntee', 'Atelier Seoul', 'sheet_mask', '', 24, 100, both, { contactTime: 15 }),
+        prod('p8', 'Reis-Sonnencreme LSF 50', 'Mori Lab', 'sunscreen', monthsAgo(2, 4), 12, 55, both, { amount: 'Zwei Fingerlängen' }),
+        prod('p9', 'Ginseng-Augencreme', 'Hanji & Co.', 'eye_cream', monthsAgo(5), 6, 30, ['bubu'])
+      ],
+      logs: [],
+      skinLog: [[6, 3, ''], [5, 3, 'Etwas trocken'], [4, 4, ''], [2, 4, 'Ruhig'], [1, 5, 'Sehr ebenmäßig']]
+        .map(([n, rating, text]) => ({ profileId: 'bibi', date: ago(n), rating, text }))
+    };
+    // Abgehakte Schritte der letzten Wochen (Grundroutine) für den Kalender
+    const base = { morning: ['cleanser_water', 'toner', 'essence', 'moisturizer', 'sunscreen'], evening: ['cleanser_oil', 'cleanser_water', 'toner', 'essence', 'serum', 'moisturizer'] };
+    for (let n = 1; n <= 24; n++) {
+      ['morning', 'evening'].forEach(time => {
+        if ((n % 5 === 0 && time === 'evening') || (n % 7 === 3 && time === 'morning')) return;
+        base[time].forEach(stepKey => d.logs.push({ profileId: 'bibi', date: ago(n), stepKey, timeOfDay: time, done: true }));
+      });
+    }
+    return d;
+  }
+  const loadDb = () => LS.get(KEY) || seed();
+  const store = d => LS.set(KEY, d);
+  const withDb = fn => { const d = loadDb(); const r = fn(d); store(d); return r; };
+  return {
+    getAll: () => withDb(d => d),
+    saveProfile: p => withDb(d => { const x = d.profiles.find(q => q.id === p.id); Object.assign(x, { skinType: p.skinType, goals: p.goals, onboarded: !!p.onboarded }); return x; }),
+    saveRoutine: (pid, steps) => withDb(d => {
+      const rows = steps.map(s => ({ profileId: pid, ...s }));
+      d.routineSteps = d.routineSteps.filter(r => r.profileId !== pid).concat(rows); return rows;
+    }),
+    saveProduct: p => withDb(d => {
+      const row = { ...p, id: p.id || 'p' + Date.now() };
+      const i = d.products.findIndex(x => x.id === row.id);
+      if (i >= 0) d.products[i] = row; else d.products.push(row);
+      return row;
+    }),
+    deleteProduct: id => withDb(d => { d.products = d.products.filter(x => x.id !== id); return { ok: true }; }),
+    setLogs: entries => withDb(d => {
+      entries.forEach(e => {
+        const x = d.logs.find(l => l.profileId === e.profileId && l.date === e.date && l.stepKey === e.stepKey && l.timeOfDay === e.timeOfDay);
+        if (x) x.done = e.done; else d.logs.push({ ...e });
+      });
+      return { ok: true };
+    }),
+    saveSkinLog: e => withDb(d => { d.skinLog = d.skinLog.filter(s => !(s.profileId === e.profileId && s.date === e.date)).concat([e]); return e; })
+  };
+})();
+
+boot();
+</script>
